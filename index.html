@@ -68,11 +68,13 @@ pre{white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:200px;o
 <section>
 <h2>New language folder</h2>
 <div class="row">
-<input id="newName" placeholder="Name (e.g. Japanese)" style="flex:1 1 140px">
-<input id="newCode" list="codes" placeholder="Code (ja-JP)" style="flex:1 1 110px">
+<select id="langPick" style="flex:1 1 200px" aria-label="Language"><option value="">Choose a language…</option></select>
 <button id="addLang">Create folder</button>
 </div>
-<datalist id="codes"><option value="es-ES"><option value="fr-FR"><option value="de-DE"><option value="it-IT"><option value="pt-PT"><option value="ja-JP"><option value="ko-KR"><option value="zh-CN"><option value="ar-SA"><option value="hi-IN"><option value="ru-RU"><option value="tr-TR"><option value="fil-PH"><option value="ceb-PH"><option value="id-ID"><option value="th-TH"><option value="vi-VN"><option value="nl-NL"><option value="sv-SE"><option value="pl-PL"><option value="el-GR"><option value="he-IL"></datalist>
+<div class="row" id="otherRow" hidden style="margin-top:8px">
+<input id="newName" placeholder="Language name (e.g. Tagalog)" style="flex:1 1 150px">
+<input id="newCode" placeholder="Voice code (e.g. fil-PH)" style="flex:1 1 130px">
+</div>
 <div id="homeStatus" class="count" style="margin-top:8px"></div>
 </section>
 <section><h2>Folders</h2><div class="grid" id="folders"></div></section>
@@ -256,7 +258,7 @@ function speak(text,code){
   speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang=code;
   const base=code.split('-')[0].toLowerCase(),vs=speechSynthesis.getVoices();
   const v=vs.find(v=>v.lang.toLowerCase()===code.toLowerCase())||vs.find(v=>v.lang.toLowerCase().split(/[-_]/)[0]===base);
-  if(v)u.voice=v;else if(vs.length)status('No installed voice for '+code+'. Add one in your device speech settings.',true);
+  if(v)u.voice=v;else if(vs.length)status('No installed voice found for this language. Add one in your device speech settings.',true);
   u.rate=.85;speechSynthesis.speak(u);
 }
 function shuffleSeq(){for(let i=seq.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[seq[i],seq[j]]=[seq[j],seq[i]]}}
@@ -465,12 +467,32 @@ function renderReview(){
 }
 
 /* ---------- events ---------- */
+const LANGS=[
+['Afrikaans','af-ZA'],['Albanian','sq-AL'],['Amharic','am-ET'],['Arabic','ar-SA'],['Armenian','hy-AM'],['Azerbaijani','az-AZ'],
+['Basque','eu-ES'],['Bengali','bn-BD'],['Bulgarian','bg-BG'],['Burmese','my-MM'],['Catalan','ca-ES'],['Cebuano','ceb-PH'],
+['Chinese (Cantonese)','zh-HK'],['Chinese (Mandarin)','zh-CN'],['Chinese (Taiwan)','zh-TW'],['Croatian','hr-HR'],['Czech','cs-CZ'],
+['Danish','da-DK'],['Dutch','nl-NL'],['English (UK)','en-GB'],['English (US)','en-US'],['Esperanto','eo'],['Estonian','et-EE'],
+['Filipino (Tagalog)','fil-PH'],['Finnish','fi-FI'],['French (Canada)','fr-CA'],['French (France)','fr-FR'],['Galician','gl-ES'],
+['Georgian','ka-GE'],['German','de-DE'],['Greek','el-GR'],['Gujarati','gu-IN'],['Hebrew','he-IL'],['Hindi','hi-IN'],['Hungarian','hu-HU'],
+['Icelandic','is-IS'],['Indonesian','id-ID'],['Irish','ga-IE'],['Italian','it-IT'],['Japanese','ja-JP'],['Kannada','kn-IN'],
+['Kazakh','kk-KZ'],['Khmer','km-KH'],['Korean','ko-KR'],['Lao','lo-LA'],['Latin','la'],['Latvian','lv-LV'],['Lithuanian','lt-LT'],
+['Macedonian','mk-MK'],['Malay','ms-MY'],['Malayalam','ml-IN'],['Marathi','mr-IN'],['Mongolian','mn-MN'],['Nepali','ne-NP'],
+['Norwegian','nb-NO'],['Persian (Farsi)','fa-IR'],['Polish','pl-PL'],['Portuguese (Brazil)','pt-BR'],['Portuguese (Portugal)','pt-PT'],
+['Punjabi','pa-IN'],['Romanian','ro-RO'],['Russian','ru-RU'],['Serbian','sr-RS'],['Sinhala','si-LK'],['Slovak','sk-SK'],
+['Slovenian','sl-SI'],['Spanish (Mexico)','es-MX'],['Spanish (Spain)','es-ES'],['Swahili','sw-KE'],['Swedish','sv-SE'],
+['Tamil','ta-IN'],['Telugu','te-IN'],['Thai','th-TH'],['Turkish','tr-TR'],['Ukrainian','uk-UA'],['Urdu','ur-PK'],['Uzbek','uz-UZ'],
+['Vietnamese','vi-VN'],['Welsh','cy-GB'],['Zulu','zu-ZA']];
+(function(){const sel=$('langPick');LANGS.forEach(l=>{const o=document.createElement('option');o.value=l[1];o.textContent=l[0];sel.appendChild(o)});
+ const ot=document.createElement('option');ot.value='__other';ot.textContent='Other (type your own)…';sel.appendChild(ot);
+ sel.onchange=()=>{$('otherRow').hidden=sel.value!=='__other'}})();
 $('addLang').onclick=()=>{
-  const n=$('newName').value.trim(),c=$('newCode').value.trim(),h=$('homeStatus');
-  if(!n||!c){h.textContent='Enter a language name and a code like ja-JP.';return}
+  const v=$('langPick').value,h=$('homeStatus');let n='',c='';
+  if(v==='__other'){n=$('newName').value.trim();c=$('newCode').value.trim()}
+  else if(v){const x=LANGS.find(l=>l[1]===v);if(x){n=x[0];c=x[1]}}
+  if(!n||!c){h.textContent=v==='__other'?'Type a language name and its voice code (like fil-PH).':'Choose a language from the list first.';return}
   const k=c.toLowerCase().replace(/[^a-z0-9_-]/g,'-');h.textContent='';
   if(!LG[k])write([k],{name:n,code:c});
-  $('newName').value='';$('newCode').value='';openFolder(k);
+  $('langPick').value='';$('otherRow').hidden=true;$('newName').value='';$('newCode').value='';openFolder(k);
 };
 $('back').onclick=goHome;
 arm($('delLang'),'Delete folder',()=>{const k=cur;goHome();write([k],null)});
