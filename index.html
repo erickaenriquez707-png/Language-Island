@@ -27,7 +27,7 @@ button{background:var(--acc);color:var(--btn);border:0;border-radius:10px;paddin
 button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
 button.danger{color:var(--warn);border-color:var(--warn)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
-.folder{background:var(--acc2);border:1px solid var(--line);border-radius:14px;padding:16px 14px;cursor:pointer;text-align:left;color:var(--ink);display:block;width:100%}
+.folder{position:relative;user-select:none;-webkit-user-select:none;background:var(--acc2);border:1px solid var(--line);border-radius:14px;padding:16px 14px;cursor:pointer;text-align:left;color:var(--ink);display:block;width:100%}
 .folder .ic{font-size:30px;line-height:1}
 .folder .n{font-weight:600;margin-top:8px;word-break:break-word}
 .folder .c{font-size:13px;color:var(--mut)}
@@ -54,11 +54,16 @@ tr.done td:not(.ck){color:var(--mut);text-decoration:line-through}
 .wrap{max-height:300px;overflow:auto}
 select{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:9px 11px;font:inherit;max-width:100%}
 pre{white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:200px;overflow:auto;margin:8px 0 0}
+.grip{position:absolute;top:4px;right:6px;padding:6px 8px;cursor:grab;touch-action:none;color:var(--mut);font-size:16px;line-height:1;border-radius:8px}
+.grip:hover{background:var(--line)}
+.folder.dragging{opacity:.45;outline:2px dashed var(--acc)}
+body.dragmode,body.dragmode *{cursor:grabbing!important}
 [hidden]{display:none!important}
 </style>
 </head>
 <body>
 <main>
+<div class="row" style="margin-bottom:10px"><button class="ghost" id="hBack" aria-label="Go back">← Back</button><button class="ghost" id="hFwd" aria-label="Go forward">Forward →</button></div>
 <h1 id="title">Language Folders</h1>
 <p class="sub" id="sub">Each language is a folder. Open one to add files and study its flashcards.</p>
 <div class="bar" id="bar"><span id="syncT">Connecting…</span></div>
@@ -77,7 +82,7 @@ pre{white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:200px;o
 </div>
 <div id="homeStatus" class="count" style="margin-top:8px"></div>
 </section>
-<section><h2>Folders</h2><div class="grid" id="folders"></div></section>
+<section><h2>Folders</h2><div class="count" id="dragHint" style="margin:-4px 0 10px" hidden>Drag a folder (grab ⋮⋮) to rearrange. The order is shared with everyone.</div><div class="grid" id="folders"></div></section>
 <section>
 <h2>Backup</h2>
 <div class="row"><button class="ghost" id="bk">Download backup (JSON)</button><button class="ghost" id="rs">Restore from backup</button><input id="rsf" type="file" accept=".json,application/json" hidden></div>
@@ -100,7 +105,7 @@ pre{white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:200px;o
 </section>
 <section><h2>Files in this folder</h2><div id="pdfs"></div></section>
 <section id="study" hidden>
-<h2 id="studyT">Flashcards</h2>
+<div class="row" style="justify-content:space-between;margin-bottom:8px"><h2 id="studyT" style="margin:0">Flashcards</h2><button class="ghost" id="studyBack">← Back to files</button></div>
 <div class="row" style="gap:16px">
 <label class="tog"><input type="checkbox" id="rev"> Reverse cards</label>
 <label class="tog"><input type="checkbox" id="hideM"> Hide mastered</label>
@@ -171,11 +176,12 @@ function later(){if(!raf)raf=requestAnimationFrame(()=>{raf=0;render()})}
 function connect(){
   let es,first=true;
   try{es=new EventSource(DB+'/langs.json')}catch(e){setSync('Offline: saved on this device only',true);return}
-  setTimeout(()=>{if(!online)setSync('Offline: saved on this device only (cloud not reachable from here)',true)},6000);
+  setTimeout(()=>{loaded=true;later();if(!online)setSync('Offline: saved on this device only (cloud not reachable from here)',true)},6000);
   es.onopen=()=>{online=true;setSync('Live sync on · everyone with the link sees the same folders')};
   es.onerror=()=>{online=false;setSync('Offline: saved on this device only (reconnecting…)',true)};
   es.addEventListener('cancel',()=>setSync('The database rules are blocking access. Check your Realtime Database rules.',true));
   es.addEventListener('put',e=>{
+    loaded=true;
     try{
       const m=JSON.parse(e.data),parts=m.path.split('/').filter(Boolean);
       if(first){first=false;
@@ -194,7 +200,7 @@ function connect(){
 }
 
 /* ---------- state ---------- */
-let view='home',cur=null,sel=null,studying=false,seq=[],idx=0,flipped=false;
+let view='home',cur=null,sel=null,studying=false,seq=[],idx=0,flipped=false,loaded=false,applied=null;
 let pending=null,shufOn=pref('lf_shuf')==='1';
 let reverse=pref('lf_reverse')==='1',hideM=pref('lf_hide')==='1';
 function status(t,err){const s=$('status');s.textContent=t;s.className=err?'err':''}
@@ -212,20 +218,87 @@ function mkbtn(t,fn,ghost){const b=document.createElement('button');b.textConten
 
 /* ---------- render ---------- */
 function render(){
-  if(view==='folder'&&!LG[cur]){view='home';cur=null;sel=null;studying=false}
+  if(view==='folder'&&!LG[cur]){
+    if(!loaded){renderHome();return}
+    view='home';cur=null;sel=null;studying=false;applied='#/';
+    try{history.replaceState(null,'','#/')}catch(e){}
+  }
   view==='home'?renderHome():renderFolder();
 }
+let dragActive=false,suppressClick=false;
+const orderedKeys=()=>Object.keys(LG).sort((a,b)=>((LG[a].o==null?1e9:LG[a].o)-(LG[b].o==null?1e9:LG[b].o))||(a<b?-1:1));
 function renderHome(){
+  if(dragActive)return;
   $('home').hidden=false;$('fview').hidden=true;$('study').hidden=true;
   $('title').textContent='Language Folders';$('sub').hidden=false;
-  const g=$('folders'),ks=Object.keys(LG);g.innerHTML='';
+  const g=$('folders'),ks=orderedKeys();g.innerHTML='';
+  $('dragHint').hidden=ks.length<2;
   if(!ks.length)g.innerHTML='<p class="count">No folders yet. Create your first language above.</p>';
-  ks.forEach(k=>{const l=LG[k],s=statCount(l),nf=arr(l.files).length,b=document.createElement('button');b.className='folder';
-    b.innerHTML='<div class="ic">📁</div><div class="n">'+esc(l.name)+'</div><div class="c">'+s.n+' cards · '+s.d+' mastered<br>'+nf+' file'+(nf===1?'':'s')+'</div>';
-    b.onclick=()=>openFolder(k);g.appendChild(b)});
+  ks.forEach(k=>{const l=LG[k],s=statCount(l),nf=arr(l.files).length,b=document.createElement('button');b.className='folder';b.dataset.k=k;
+    b.innerHTML=(ks.length>1?'<span class="grip" title="Drag to rearrange" aria-hidden="true">⋮⋮</span>':'')+'<div class="ic">📁</div><div class="n">'+esc(l.name)+'</div><div class="c">'+s.n+' cards · '+s.d+' mastered<br>'+nf+' file'+(nf===1?'':'s')+'</div>';
+    b.onclick=()=>{if(suppressClick)return;openFolder(k)};
+    b.onkeydown=e=>{if(e.altKey&&(e.key==='ArrowLeft'||e.key==='ArrowRight')){e.preventDefault();moveKey(k,e.key==='ArrowLeft'?-1:1)}};
+    g.appendChild(b)});
 }
-function openFolder(k){pending=null;renderReview();view='folder';cur=k;sel=null;studying=false;status('');render()}
-function goHome(){pending=null;renderReview();view='home';cur=null;sel=null;studying=false;render()}
+function saveOrder(keys){keys.forEach((k,i)=>{if(LG[k]&&LG[k].o!==i)write([k,'o'],i)})}
+function moveKey(k,d){
+  const ks=orderedKeys(),i=ks.indexOf(k),j=i+d;if(j<0||j>=ks.length)return;
+  ks.splice(i,1);ks.splice(j,0,k);saveOrder(ks);
+  requestAnimationFrame(()=>{const t=document.querySelector('.folder[data-k="'+k+'"]');if(t)t.focus()});
+}
+(function(){
+  const g=$('folders');let d=null;
+  g.addEventListener('pointerdown',e=>{
+    const t=e.target.closest('.folder');if(!t)return;
+    const grip=!!e.target.closest('.grip');
+    if(e.pointerType==='mouse'?e.button!==0:!grip)return;
+    d={t,x:e.clientX,y:e.clientY,on:false};
+    window.addEventListener('pointermove',mv);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',up);
+  });
+  function mv(e){
+    if(!d)return;
+    if(!d.on){
+      if(Math.hypot(e.clientX-d.x,e.clientY-d.y)<7)return;
+      d.on=true;dragActive=true;d.t.classList.add('dragging');document.body.classList.add('dragmode');
+    }
+    e.preventDefault();
+    const el=document.elementFromPoint(e.clientX,e.clientY),tg=el&&el.closest&&el.closest('.folder');
+    if(!tg||tg===d.t||tg.parentNode!==g)return;
+    const r=tg.getBoundingClientRect(),before=e.clientX<r.left+r.width/2;
+    g.insertBefore(d.t,before?tg:tg.nextSibling);
+  }
+  function up(){
+    window.removeEventListener('pointermove',mv);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',up);
+    if(!d)return;
+    const was=d.on;d.t.classList.remove('dragging');document.body.classList.remove('dragmode');
+    if(was){
+      const keys=[...g.querySelectorAll('.folder')].map(x=>x.dataset.k);
+      dragActive=false;suppressClick=true;setTimeout(()=>{suppressClick=false},250);
+      saveOrder(keys);renderHome();
+    }
+    d=null;
+  }
+})();
+function go(h){
+  try{if(location.hash!==h)location.hash=h;else applyHash(h)}catch(e){applyHash(h)}
+  applyHash(h);
+}
+function applyHash(h){
+  h=h||location.hash||'#/';
+  if(h===applied)return;
+  applied=h;pending=null;renderReview();
+  const m=h.match(/^#\/f\/([^\/]+)(?:\/s\/([^\/]+))?$/);
+  if(!m){view='home';cur=null;sel=null;studying=false}
+  else{
+    view='folder';cur=decodeURIComponent(m[1]);status('');
+    if(m[2]){sel=m[2]==='all'?null:decodeURIComponent(m[2]);studying=true;seq=[];idx=0;flipped=false}
+    else{sel=null;studying=false}
+  }
+  render();
+  if(view==='folder'&&studying)$('study').scrollIntoView({behavior:'smooth'});else window.scrollTo(0,0);
+}
+function openFolder(k){go('#/f/'+encodeURIComponent(k))}
+function goHome(){go('#/')}
 function renderFolder(){
   const l=LG[cur];
   $('home').hidden=true;$('fview').hidden=false;$('sub').hidden=true;$('title').textContent='📂 '+l.name;
@@ -245,10 +318,7 @@ function renderFolder(){
   $('study').hidden=!studying;
   if(studying)renderStudy();
 }
-function study(id){
-  sel=id;studying=true;seq=[];idx=0;flipped=false;
-  renderFolder();$('study').scrollIntoView({behavior:'smooth'});
-}
+function study(id){applied=null;go('#/f/'+encodeURIComponent(cur)+'/s/'+(id===null?'all':encodeURIComponent(id)))}
 function cardMap(){
   const m={};filesOf(LG[cur]).filter(f=>sel===null||f.id===sel).forEach(f=>f.cards.forEach(c=>{m[f.id+'|'+c.key]=Object.assign({fid:f.id},c)}));
   return m;
@@ -491,10 +561,14 @@ $('addLang').onclick=()=>{
   else if(v){const x=LANGS.find(l=>l[1]===v);if(x){n=x[0];c=x[1]}}
   if(!n||!c){h.textContent=v==='__other'?'Type a language name and its voice code (like fil-PH).':'Choose a language from the list first.';return}
   const k=c.toLowerCase().replace(/[^a-z0-9_-]/g,'-');h.textContent='';
-  if(!LG[k])write([k],{name:n,code:c});
+  if(!LG[k]){const os=Object.values(LG).map(x=>x.o).filter(x=>x!=null);write([k],{name:n,code:c,o:os.length?Math.max(...os)+1:Object.keys(LG).length})}
   $('langPick').value='';$('otherRow').hidden=true;$('newName').value='';$('newCode').value='';openFolder(k);
 };
 $('back').onclick=goHome;
+$('studyBack').onclick=()=>go('#/f/'+encodeURIComponent(cur));
+$('hBack').onclick=()=>{try{history.back()}catch(e){goHome()}};
+$('hFwd').onclick=()=>{try{history.forward()}catch(e){}};
+window.addEventListener('hashchange',()=>applyHash());
 arm($('delLang'),'Delete folder',()=>{const k=cur;goHome();write([k],null)});
 $('rev').onchange=e=>{reverse=e.target.checked;pref('lf_reverse',reverse?'1':'0');flipped=false;renderStudy()};
 $('hideM').onchange=e=>{hideM=e.target.checked;pref('lf_hide',hideM?'1':'0');idx=0;renderStudy()};
@@ -519,7 +593,7 @@ fi.onchange=()=>{handle(fi.files[0]);fi.value=''};
 ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('on')}));
 ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('on')}));
 drop.addEventListener('drop',e=>handle(e.dataTransfer.files[0]));
-render();connect();
+applyHash();connect();
 })();
 </script>
 </body>
