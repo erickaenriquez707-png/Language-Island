@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Language Folders</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#faf8f4;--card:#fff;--ink:#1d1b18;--mut:#7a746b;--line:#e4dfd6;--acc:#2f6f5e;--acc2:#e8f1ee;--warn:#b4531f;--btn:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171614;--card:#221f1c;--ink:#f1ede6;--mut:#a39c90;--line:#38332d;--acc:#6cc2a8;--acc2:#1f2e29;--warn:#e29363;--btn:#10201b}}
+:root[data-theme="dark"]{--bg:#171614;--card:#221f1c;--ink:#f1ede6;--mut:#a39c90;--line:#38332d;--acc:#6cc2a8;--acc2:#1f2e29;--warn:#e29363;--btn:#10201b}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:760px;margin:0 auto;padding:20px 16px 48px}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--mut);margin:0 0 14px;font-size:14px}
+.bar{font-size:13px;color:var(--mut);border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px 12px;margin-bottom:16px}
+.bar.err{color:var(--warn)}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
+h2{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:0 0 10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input,button{font:inherit;color:var(--ink)}
+input[type=text],input:not([type]){background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 11px;min-width:0}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--acc);flex:none}
+button{background:var(--acc);color:var(--btn);border:0;border-radius:10px;padding:9px 14px;cursor:pointer}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button.danger{color:var(--warn);border-color:var(--warn)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.folder{background:var(--acc2);border:1px solid var(--line);border-radius:14px;padding:16px 14px;cursor:pointer;text-align:left;color:var(--ink);display:block;width:100%}
+.folder .ic{font-size:30px;line-height:1}
+.folder .n{font-weight:600;margin-top:8px;word-break:break-word}
+.folder .c{font-size:13px;color:var(--mut)}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:20px;text-align:center;color:var(--mut);cursor:pointer}
+.drop.on{border-color:var(--acc);background:var(--acc2)}
+#status{font-size:14px;color:var(--mut);margin-top:10px;min-height:20px}
+#status.err{color:var(--warn)}
+.pdf{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.pdf:first-of-type{border-top:0}
+.pdf .t{flex:1 1 160px;min-width:0;word-break:break-word}
+.pdf .t small{color:var(--mut);display:block}
+.deck{display:flex;flex-direction:column;align-items:center;gap:14px}
+.fc{width:100%;min-height:200px;background:var(--bg);border:1px solid var(--line);border-radius:16px;padding:24px;text-align:center;cursor:pointer;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:10px;user-select:none}
+.fc.done{border-color:var(--acc)}
+.fc .w{font-size:34px;font-weight:600;word-break:break-word}
+.fc .m{font-size:22px;color:var(--acc);word-break:break-word}
+.fc .hint,.count{font-size:14px;color:var(--mut)}
+.spk{width:48px;height:48px;border-radius:50%;padding:0;font-size:20px;display:flex;align-items:center;justify-content:center}
+.tog{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td{padding:6px 4px;border-top:1px solid var(--line);vertical-align:middle}
+td.ck{width:32px}
+tr.done td:not(.ck){color:var(--mut);text-decoration:line-through}
+.wrap{max-height:300px;overflow:auto}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<h1 id="title">Language Folders</h1>
+<p class="sub" id="sub">Each language is a folder. Open one to add files and study its flashcards.</p>
+<div class="bar" id="bar"><span id="syncT">Connecting…</span></div>
+
+<!-- HOME -->
+<div id="home">
+<section>
+<h2>New language folder</h2>
+<div class="row">
+<input id="newName" placeholder="Name (e.g. Japanese)" style="flex:1 1 140px">
+<input id="newCode" list="codes" placeholder="Code (ja-JP)" style="flex:1 1 110px">
+<button id="addLang">Create folder</button>
+</div>
+<datalist id="codes"><option value="es-ES"><option value="fr-FR"><option value="de-DE"><option value="it-IT"><option value="pt-PT"><option value="ja-JP"><option value="ko-KR"><option value="zh-CN"><option value="ar-SA"><option value="hi-IN"><option value="ru-RU"><option value="tr-TR"><option value="fil-PH"><option value="ceb-PH"><option value="id-ID"><option value="th-TH"><option value="vi-VN"><option value="nl-NL"><option value="sv-SE"><option value="pl-PL"><option value="el-GR"><option value="he-IL"></datalist>
+<div id="homeStatus" class="count" style="margin-top:8px"></div>
+</section>
+<section><h2>Folders</h2><div class="grid" id="folders"></div></section>
+<section>
+<h2>Backup</h2>
+<div class="row"><button class="ghost" id="bk">Download backup (JSON)</button><button class="ghost" id="rs">Restore from backup</button><input id="rsf" type="file" accept=".json,application/json" hidden></div>
+<div class="count" id="bkStatus" style="margin-top:8px">Everyone with the link shares these folders, so keep a backup.</div>
+</section>
+</div>
+
+<!-- FOLDER -->
+<div id="fview" hidden>
+<div class="row" style="margin-bottom:12px">
+<button class="ghost" id="back">← All folders</button>
+<button class="ghost" id="delLang">Delete folder</button>
+</div>
+<section>
+<h2>Add a PDF or Word doc</h2>
+<div class="row" style="margin-bottom:10px"><label for="mean" class="count">Meanings in:</label><input id="mean" value="English" style="flex:1 1 120px"></div>
+<div class="drop" id="drop">Drop a PDF, Word (.docx) or text file here, or tap to choose<input id="file" type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" hidden></div>
+<div id="status"></div>
+</section>
+<section><h2>Files in this folder</h2><div id="pdfs"></div></section>
+<section id="study" hidden>
+<h2 id="studyT">Flashcards</h2>
+<div class="row" style="gap:16px">
+<label class="tog"><input type="checkbox" id="rev"> Reverse cards</label>
+<label class="tog"><input type="checkbox" id="hideM"> Hide mastered</label>
+</div>
+<div class="count" id="prog" style="margin-top:6px"></div>
+<div id="deckBox" class="deck" style="margin-top:12px"></div>
+<div class="row" style="justify-content:center;margin-top:12px" id="ctl">
+<button class="ghost" id="prev">Prev</button><button class="ghost" id="shuf">Shuffle</button><button class="ghost" id="next">Next</button>
+</div>
+<h2 style="margin-top:18px">Checklist</h2>
+<div class="wrap"><table id="tbl"></table></div>
+</section>
+</div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script>
+(function(){
+/* Your Firebase Realtime Database */
+const DB='https://language-island-aff43-default-rtdb.asia-southeast1.firebasedatabase.app';
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pref=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){}return null};
+
+/* ---------- data: LG = { langKey: {name, code, files:{fileId:{name,created,cards:[{w,m,d}]}}} } ---------- */
+let LG={};
+try{
+  const c=localStorage.getItem('lf_tree');
+  if(c)LG=JSON.parse(c)||{};
+  else{const o=localStorage.getItem('langfolders');
+    if(o){const p=JSON.parse(o);Object.keys(p.langs||{}).forEach(k=>{const l=p.langs[k],fl={};
+      (l.files||[]).forEach(f=>{fl[f.id]={name:f.name,created:f.created||0,cards:f.cards}});
+      LG[k]={name:l.name,code:l.code,files:fl}})}}
+}catch(e){LG={}}
+const cachedAtStart=JSON.parse(JSON.stringify(LG));
+const cache=()=>pref('lf_tree',JSON.stringify(LG));
+
+const arr=x=>!x?[]:Array.isArray(x)?x.map((v,i)=>[String(i),v]).filter(p=>p[1]!=null):Object.keys(x).sort((a,b)=>a-b).map(k=>[k,x[k]]);
+const filesOf=l=>arr(l.files).map(([id,f])=>({id,name:f.name||'file',created:f.created||0,
+  cards:arr(f.cards).map(([key,c])=>({key,w:c.w,m:c.m,d:!!c.d}))})).sort((a,b)=>a.created-b.created);
+
+function setAt(parts,val){
+  if(!parts.length){LG=val||{};return}
+  let o=LG;
+  for(let i=0;i<parts.length-1;i++){
+    let n=o[parts[i]];
+    if(n==null||typeof n!=='object'){if(val==null)return;n=o[parts[i]]={}}
+    o=n;
+  }
+  const last=parts[parts.length-1];
+  if(val==null)delete o[last];else o[last]=val;
+}
+let online=false;
+function setSync(t,err){$('syncT').textContent=t;$('bar').className='bar'+(err?' err':'')}
+function send(method,parts,val){
+  const u=DB+'/langs'+(parts.length?'/'+parts.map(encodeURIComponent).join('/'):'')+'.json';
+  fetch(u,{method,headers:{'Content-Type':'application/json'},body:method==='DELETE'?undefined:JSON.stringify(val)})
+    .then(r=>{if(!r.ok)throw new Error('error '+r.status)})
+    .catch(e=>setSync('Could not save to the cloud ('+(e.message||'no connection')+'). Saved on this device only.',true));
+}
+function write(parts,val){setAt(parts,val);cache();send(val==null?'DELETE':'PUT',parts,val);render()}
+
+let raf=0;
+function later(){if(!raf)raf=requestAnimationFrame(()=>{raf=0;render()})}
+function connect(){
+  let es,first=true;
+  try{es=new EventSource(DB+'/langs.json')}catch(e){setSync('Offline: saved on this device only',true);return}
+  setTimeout(()=>{if(!online)setSync('Offline: saved on this device only (cloud not reachable from here)',true)},6000);
+  es.onopen=()=>{online=true;setSync('Live sync on · everyone with the link sees the same folders')};
+  es.onerror=()=>{online=false;setSync('Offline: saved on this device only (reconnecting…)',true)};
+  es.addEventListener('cancel',()=>setSync('The database rules are blocking access. Check your Realtime Database rules.',true));
+  es.addEventListener('put',e=>{
+    try{
+      const m=JSON.parse(e.data),parts=m.path.split('/').filter(Boolean);
+      if(first){first=false;
+        if(parts.length===0&&m.data==null&&Object.keys(cachedAtStart).length){LG=cachedAtStart;send('PUT',[],LG);cache();later();return}
+      }
+      setAt(parts,m.data);cache();later();
+    }catch(x){}
+  });
+  es.addEventListener('patch',e=>{
+    try{
+      const m=JSON.parse(e.data),parts=m.path.split('/').filter(Boolean);
+      Object.keys(m.data||{}).forEach(k=>setAt(parts.concat(k.split('/').filter(Boolean)),m.data[k]));
+      cache();later();
+    }catch(x){}
+  });
+}
+
+/* ---------- state ---------- */
+let view='home',cur=null,sel=null,studying=false,seq=[],idx=0,flipped=false;
+let reverse=pref('lf_reverse')==='1',hideM=pref('lf_hide')==='1';
+function status(t,err){const s=$('status');s.textContent=t;s.className=err?'err':''}
+const statCount=l=>{let n=0,d=0;filesOf(l).forEach(f=>f.cards.forEach(c=>{n++;if(c.d)d++}));return{n,d}};
+
+function arm(b,label,fn){
+  let on=false,t;
+  b.onclick=()=>{
+    if(!on){on=true;b.textContent='Tap again to confirm';b.classList.add('danger');
+      t=setTimeout(()=>{on=false;b.textContent=label;b.classList.remove('danger')},4000)}
+    else{clearTimeout(t);on=false;b.textContent=label;b.classList.remove('danger');fn()}
+  };
+}
+function mkbtn(t,fn,ghost){const b=document.createElement('button');b.textContent=t;if(ghost)b.className='ghost';if(fn)b.onclick=fn;return b}
+
+/* ---------- render ---------- */
+function render(){
+  if(view==='folder'&&!LG[cur]){view='home';cur=null;sel=null;studying=false}
+  view==='home'?renderHome():renderFolder();
+}
+function renderHome(){
+  $('home').hidden=false;$('fview').hidden=true;$('study').hidden=true;
+  $('title').textContent='Language Folders';$('sub').hidden=false;
+  const g=$('folders'),ks=Object.keys(LG);g.innerHTML='';
+  if(!ks.length)g.innerHTML='<p class="count">No folders yet. Create your first language above.</p>';
+  ks.forEach(k=>{const l=LG[k],s=statCount(l),nf=arr(l.files).length,b=document.createElement('button');b.className='folder';
+    b.innerHTML='<div class="ic">📁</div><div class="n">'+esc(l.name)+'</div><div class="c">'+s.n+' cards · '+s.d+' mastered<br>'+nf+' file'+(nf===1?'':'s')+'</div>';
+    b.onclick=()=>openFolder(k);g.appendChild(b)});
+}
+function openFolder(k){view='folder';cur=k;sel=null;studying=false;status('');render()}
+function goHome(){view='home';cur=null;sel=null;studying=false;render()}
+function renderFolder(){
+  const l=LG[cur];
+  $('home').hidden=true;$('fview').hidden=false;$('sub').hidden=true;$('title').textContent='📂 '+l.name;
+  const box=$('pdfs');box.innerHTML='';const fs=filesOf(l);
+  if(!fs.length)box.innerHTML='<p class="count">Empty folder. Add a file above.</p>';
+  else{
+    const s=statCount(l),all=document.createElement('div');all.className='pdf';
+    all.innerHTML='<div class="t"><b>All flashcards</b><small>'+s.n+' cards · '+s.d+' mastered</small></div>';
+    all.appendChild(mkbtn('Study all',()=>study(null),1));box.appendChild(all);
+    fs.forEach(f=>{const d=document.createElement('div');d.className='pdf';const m=f.cards.filter(c=>c.d).length;
+      d.innerHTML='<div class="t">'+(/\.docx?$/i.test(f.name)?'📝':'📄')+' '+esc(f.name)+'<small>'+f.cards.length+' cards · '+m+' mastered</small></div>';
+      d.appendChild(mkbtn('Study',()=>study(f.id),1));
+      const del=mkbtn('Delete',null,1);
+      arm(del,'Delete',()=>{if(sel===f.id){sel=null;studying=false}write([cur,'files',f.id],null)});
+      d.appendChild(del);box.appendChild(d)});
+  }
+  $('study').hidden=!studying;
+  if(studying)renderStudy();
+}
+function study(id){
+  sel=id;studying=true;seq=[];idx=0;flipped=false;
+  renderFolder();$('study').scrollIntoView({behavior:'smooth'});
+}
+function cardMap(){
+  const m={};filesOf(LG[cur]).filter(f=>sel===null||f.id===sel).forEach(f=>f.cards.forEach(c=>{m[f.id+'|'+c.key]=Object.assign({fid:f.id},c)}));
+  return m;
+}
+function speak(text,code){
+  if(!('speechSynthesis' in window)){status('Audio is not supported in this browser.',true);return}
+  speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang=code;
+  const base=code.split('-')[0].toLowerCase(),vs=speechSynthesis.getVoices();
+  const v=vs.find(v=>v.lang.toLowerCase()===code.toLowerCase())||vs.find(v=>v.lang.toLowerCase().split(/[-_]/)[0]===base);
+  if(v)u.voice=v;else if(vs.length)status('No installed voice for '+code+'. Add one in your device speech settings.',true);
+  u.rate=.85;speechSynthesis.speak(u);
+}
+function renderStudy(){
+  const l=LG[cur],map=cardMap(),ids=Object.keys(map),have=new Set(seq);
+  seq=seq.filter(id=>map[id]);ids.forEach(id=>{if(!have.has(id))seq.push(id)});
+  const f=filesOf(l).find(x=>x.id===sel);$('studyT').textContent=f?f.name:'All flashcards';
+  $('rev').checked=reverse;$('hideM').checked=hideM;
+  const done=ids.filter(id=>map[id].d).length;
+  $('prog').textContent=done+' of '+ids.length+' mastered';
+  const vis=seq.filter(id=>!(hideM&&map[id].d)).map(id=>map[id]);
+  const box=$('deckBox');box.innerHTML='';$('ctl').hidden=!vis.length;
+  if(!ids.length)box.innerHTML='<p class="count">No cards here yet.</p>';
+  else if(!vis.length)box.innerHTML='<p class="count">🎉 Everything here is mastered. Untick "Hide mastered" to review.</p>';
+  else{
+    if(idx>=vis.length)idx=0;
+    const c=vis[idx],front=reverse?c.m:c.w,back=reverse?c.w:c.m;
+    const fc=document.createElement('div');fc.className='fc'+(c.d?' done':'');fc.tabIndex=0;
+    fc.innerHTML='<div class="count">'+(idx+1)+' / '+vis.length+'</div><div class="w">'+esc(front)+'</div>'+(flipped?'<div class="m">'+esc(back)+'</div>':'<div class="hint">Tap card to reveal '+(reverse?'the word':'the meaning')+'</div>');
+    fc.onclick=()=>{flipped=!flipped;renderStudy()};
+    fc.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fc.click()}};
+    const row=document.createElement('div');row.className='row';row.style.justifyContent='center';row.style.gap='18px';
+    const b=mkbtn('🔊',()=>speak(c.w,l.code));b.className='spk';b.title='Hear pronunciation';b.setAttribute('aria-label','Play pronunciation');
+    const lb=document.createElement('label');lb.className='tog';
+    const ck=document.createElement('input');ck.type='checkbox';ck.checked=c.d;
+    ck.onchange=()=>{write([cur,'files',c.fid,'cards',c.key,'d'],ck.checked?true:null)};
+    lb.appendChild(ck);lb.appendChild(document.createTextNode(' I mastered this'));
+    row.appendChild(b);row.appendChild(lb);
+    box.appendChild(fc);box.appendChild(row);
+  }
+  const t=$('tbl');t.innerHTML='';
+  ids.forEach(id=>{const c=map[id],tr=document.createElement('tr');if(c.d)tr.className='done';
+    const td=document.createElement('td');td.className='ck';
+    const ck=document.createElement('input');ck.type='checkbox';ck.checked=c.d;ck.setAttribute('aria-label','Mastered: '+c.w);
+    ck.onchange=()=>write([cur,'files',c.fid,'cards',c.key,'d'],ck.checked?true:null);
+    td.appendChild(ck);tr.appendChild(td);
+    tr.insertAdjacentHTML('beforeend','<td>'+esc(c.w)+'</td><td>'+esc(c.m)+'</td>');t.appendChild(tr)});
+}
+
+/* ---------- reading files ---------- */
+async function pdfLines(file){
+  if(!window.pdfjsLib)throw new Error('PDF reader failed to load.');
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const doc=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise,lines=[];
+  for(let p=1;p<=doc.numPages;p++){
+    status('Reading page '+p+' of '+doc.numPages+'…');
+    const tc=await (await doc.getPage(p)).getTextContent();let y=null,s='';
+    tc.items.forEach(it=>{const yy=Math.round(it.transform[5]);
+      if(y!==null&&Math.abs(yy-y)>3){if(s.trim())lines.push(s.trim());s=''}
+      s+=(s&&it.str&&!/\s$/.test(s)&&!/^\s/.test(it.str)&&Math.abs(yy-y)<=3?'  ':'')+it.str;y=yy});
+    if(s.trim())lines.push(s.trim());
+  }
+  return lines;
+}
+async function docLines(file){
+  const n=file.name.toLowerCase(),toLines=t=>t.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  if(n.endsWith('.txt'))return toLines(await file.text());
+  if(n.endsWith('.docx')){
+    if(!window.mammoth)throw new Error('Word reader failed to load.');
+    status('Reading Word document…');
+    return toLines((await mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()})).value);
+  }
+  if(n.endsWith('.doc'))throw new Error('Old .doc files are not supported. Please save it as .docx first.');
+  return pdfLines(file);
+}
+function parseLocal(lines){
+  const out=[];let hit=0;
+  lines.forEach(ln=>{const m=ln.split(/\s+[-–—:=|→]\s+|\t|\s{2,}/).map(s=>s.trim()).filter(Boolean);
+    if(m.length>=2&&m[0].length<=60){hit++;out.push({w:m[0],m:m.slice(1).join(' / ')})}});
+  return{cards:out,ratio:lines.length?hit/lines.length:0};
+}
+let sample=null;
+if(window.claude&&claude.use)claude.use('sample').then(s=>{sample=s}).catch(()=>{});
+async function parseAI(lines,l){
+  const text=lines.join('\n'),ch=[],out=[];
+  for(let i=0;i<text.length;i+=5000)ch.push(text.slice(i,i+5000));
+  for(let i=0;i<ch.length;i++){
+    status('Extracting vocabulary with AI… part '+(i+1)+' of '+ch.length);
+    const r=await sample.json('This text is from a '+l.name+' learning document. Extract the useful vocabulary words or short phrases written in '+l.name+', with a short meaning in '+($('mean').value||'English')+' (use the meaning in the text if given, otherwise translate). Return ONLY a JSON array like [{"w":"word","m":"meaning"}]. Skip page numbers and headings.\n\nTEXT:\n'+ch[i],{cache:false});
+    (Array.isArray(r)?r:(r&&r.cards)||[]).forEach(x=>{if(x&&x.w&&x.m)out.push({w:String(x.w),m:String(x.m)})});
+  }
+  return out;
+}
+async function handle(file){
+  const l=LG[cur];
+  if(!file||!/\.(pdf|docx|doc|txt)$/i.test(file.name)){status('Please choose a PDF, Word (.docx) or text file.',true);return}
+  try{
+    const lines=await docLines(file);
+    if(!lines.length){status('No text found. If it is a scanned PDF, it needs OCR, which is not built yet.',true);return}
+    let{cards,ratio}=parseLocal(lines);
+    if(ratio<.4||cards.length<3){
+      if(sample)cards=await parseAI(lines,l);
+      else if(!cards.length){status('Could not find word and meaning pairs (like "casa - house") in this file.',true);return}
+    }
+    const seen=new Set(),uniq=[];
+    cards.forEach(c=>{const k=c.w.toLowerCase();if(!seen.has(k)){seen.add(k);uniq.push({w:c.w,m:c.m})}});
+    write([cur,'files','f'+Date.now()],{name:file.name,created:Date.now(),cards:uniq});
+    status('Added "'+file.name+'" with '+uniq.length+' flashcards.');
+  }catch(e){status('Something went wrong: '+(e&&e.message||e.code||'unknown error'),true)}
+}
+
+/* ---------- events ---------- */
+$('addLang').onclick=()=>{
+  const n=$('newName').value.trim(),c=$('newCode').value.trim(),h=$('homeStatus');
+  if(!n||!c){h.textContent='Enter a language name and a code like ja-JP.';return}
+  const k=c.toLowerCase().replace(/[^a-z0-9_-]/g,'-');h.textContent='';
+  if(!LG[k])write([k],{name:n,code:c});
+  $('newName').value='';$('newCode').value='';openFolder(k);
+};
+$('back').onclick=goHome;
+arm($('delLang'),'Delete folder',()=>{const k=cur;goHome();write([k],null)});
+$('rev').onchange=e=>{reverse=e.target.checked;pref('lf_reverse',reverse?'1':'0');flipped=false;renderStudy()};
+$('hideM').onchange=e=>{hideM=e.target.checked;pref('lf_hide',hideM?'1':'0');idx=0;renderStudy()};
+const visCount=()=>{const m=cardMap();return seq.filter(id=>m[id]&&!(hideM&&m[id].d)).length};
+$('next').onclick=()=>{const n=visCount();if(n){idx=(idx+1)%n;flipped=false;renderStudy()}};
+$('prev').onclick=()=>{const n=visCount();if(n){idx=(idx-1+n)%n;flipped=false;renderStudy()}};
+$('shuf').onclick=()=>{for(let i=seq.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[seq[i],seq[j]]=[seq[j],seq[i]]}idx=0;flipped=false;renderStudy()};
+$('bk').onclick=()=>{
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(LG,null,1)],{type:'application/json'}));
+  a.download='language-folders-backup.json';document.body.appendChild(a);a.click();a.remove();
+};
+$('rs').onclick=()=>$('rsf').click();
+$('rsf').onchange=async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;
+  try{const o=JSON.parse(await f.text());Object.keys(o).forEach(k=>write([k],o[k]));$('bkStatus').textContent='Backup restored.'}
+  catch(x){$('bkStatus').textContent='That file is not a valid backup.'}
+};
+const drop=$('drop'),fi=$('file');
+drop.onclick=()=>fi.click();
+fi.onchange=()=>{handle(fi.files[0]);fi.value=''};
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('on')}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('on')}));
+drop.addEventListener('drop',e=>handle(e.dataTransfer.files[0]));
+render();connect();
+})();
+</script>
+</body>
+</html>
