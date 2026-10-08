@@ -52,6 +52,8 @@ td{padding:6px 4px;border-top:1px solid var(--line);vertical-align:middle}
 td.ck{width:32px}
 tr.done td:not(.ck){color:var(--mut);text-decoration:line-through}
 .wrap{max-height:300px;overflow:auto}
+select{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:9px 11px;font:inherit;max-width:100%}
+pre{white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:200px;overflow:auto;margin:8px 0 0}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -92,6 +94,7 @@ tr.done td:not(.ck){color:var(--mut);text-decoration:line-through}
 <div class="row" style="margin-bottom:10px"><label for="mean" class="count">Meanings in:</label><input id="mean" value="English" style="flex:1 1 120px"></div>
 <div class="drop" id="drop">Drop a PDF, Word (.docx) or text file here, or tap to choose<input id="file" type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" hidden></div>
 <div id="status"></div>
+<div id="review" hidden style="margin-top:12px"></div>
 </section>
 <section><h2>Files in this folder</h2><div id="pdfs"></div></section>
 <section id="study" hidden>
@@ -99,6 +102,7 @@ tr.done td:not(.ck){color:var(--mut);text-decoration:line-through}
 <div class="row" style="gap:16px">
 <label class="tog"><input type="checkbox" id="rev"> Reverse cards</label>
 <label class="tog"><input type="checkbox" id="hideM"> Hide mastered</label>
+<label class="tog"><input type="checkbox" id="shufOn"> Shuffle order</label>
 </div>
 <div class="count" id="prog" style="margin-top:6px"></div>
 <div id="deckBox" class="deck" style="margin-top:12px"></div>
@@ -137,7 +141,7 @@ const cache=()=>pref('lf_tree',JSON.stringify(LG));
 
 const arr=x=>!x?[]:Array.isArray(x)?x.map((v,i)=>[String(i),v]).filter(p=>p[1]!=null):Object.keys(x).sort((a,b)=>a-b).map(k=>[k,x[k]]);
 const filesOf=l=>arr(l.files).map(([id,f])=>({id,name:f.name||'file',created:f.created||0,
-  cards:arr(f.cards).map(([key,c])=>({key,w:c.w,m:c.m,d:!!c.d}))})).sort((a,b)=>a.created-b.created);
+  cards:arr(f.cards).map(([key,c])=>({key,w:c.w,m:c.m,p:c.p,d:!!c.d}))})).sort((a,b)=>a.created-b.created);
 
 function setAt(parts,val){
   if(!parts.length){LG=val||{};return}
@@ -189,6 +193,7 @@ function connect(){
 
 /* ---------- state ---------- */
 let view='home',cur=null,sel=null,studying=false,seq=[],idx=0,flipped=false;
+let pending=null,shufOn=pref('lf_shuf')==='1';
 let reverse=pref('lf_reverse')==='1',hideM=pref('lf_hide')==='1';
 function status(t,err){const s=$('status');s.textContent=t;s.className=err?'err':''}
 const statCount=l=>{let n=0,d=0;filesOf(l).forEach(f=>f.cards.forEach(c=>{n++;if(c.d)d++}));return{n,d}};
@@ -217,8 +222,8 @@ function renderHome(){
     b.innerHTML='<div class="ic">📁</div><div class="n">'+esc(l.name)+'</div><div class="c">'+s.n+' cards · '+s.d+' mastered<br>'+nf+' file'+(nf===1?'':'s')+'</div>';
     b.onclick=()=>openFolder(k);g.appendChild(b)});
 }
-function openFolder(k){view='folder';cur=k;sel=null;studying=false;status('');render()}
-function goHome(){view='home';cur=null;sel=null;studying=false;render()}
+function openFolder(k){pending=null;renderReview();view='folder';cur=k;sel=null;studying=false;status('');render()}
+function goHome(){pending=null;renderReview();view='home';cur=null;sel=null;studying=false;render()}
 function renderFolder(){
   const l=LG[cur];
   $('home').hidden=true;$('fview').hidden=false;$('sub').hidden=true;$('title').textContent='📂 '+l.name;
@@ -254,11 +259,13 @@ function speak(text,code){
   if(v)u.voice=v;else if(vs.length)status('No installed voice for '+code+'. Add one in your device speech settings.',true);
   u.rate=.85;speechSynthesis.speak(u);
 }
+function shuffleSeq(){for(let i=seq.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[seq[i],seq[j]]=[seq[j],seq[i]]}}
 function renderStudy(){
   const l=LG[cur],map=cardMap(),ids=Object.keys(map),have=new Set(seq);
   seq=seq.filter(id=>map[id]);ids.forEach(id=>{if(!have.has(id))seq.push(id)});
+  if(!have.size&&shufOn)shuffleSeq();
   const f=filesOf(l).find(x=>x.id===sel);$('studyT').textContent=f?f.name:'All flashcards';
-  $('rev').checked=reverse;$('hideM').checked=hideM;
+  $('rev').checked=reverse;$('hideM').checked=hideM;$('shufOn').checked=shufOn;
   const done=ids.filter(id=>map[id].d).length;
   $('prog').textContent=done+' of '+ids.length+' mastered';
   const vis=seq.filter(id=>!(hideM&&map[id].d)).map(id=>map[id]);
@@ -269,7 +276,7 @@ function renderStudy(){
     if(idx>=vis.length)idx=0;
     const c=vis[idx],front=reverse?c.m:c.w,back=reverse?c.w:c.m;
     const fc=document.createElement('div');fc.className='fc'+(c.d?' done':'');fc.tabIndex=0;
-    fc.innerHTML='<div class="count">'+(idx+1)+' / '+vis.length+'</div><div class="w">'+esc(front)+'</div>'+(flipped?'<div class="m">'+esc(back)+'</div>':'<div class="hint">Tap card to reveal '+(reverse?'the word':'the meaning')+'</div>');
+    fc.innerHTML='<div class="count">'+(idx+1)+' / '+vis.length+'</div><div class="w">'+esc(front)+'</div>'+(flipped?'<div class="m">'+esc(back)+'</div>'+(c.p?'<div class="count">'+esc(c.p)+'</div>':''):'<div class="hint">Tap card to reveal '+(reverse?'the word':'the meaning')+'</div>');
     fc.onclick=()=>{flipped=!flipped;renderStudy()};
     fc.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fc.click()}};
     const row=document.createElement('div');row.className='row';row.style.justifyContent='center';row.style.gap='18px';
@@ -287,41 +294,117 @@ function renderStudy(){
     const ck=document.createElement('input');ck.type='checkbox';ck.checked=c.d;ck.setAttribute('aria-label','Mastered: '+c.w);
     ck.onchange=()=>write([cur,'files',c.fid,'cards',c.key,'d'],ck.checked?true:null);
     td.appendChild(ck);tr.appendChild(td);
-    tr.insertAdjacentHTML('beforeend','<td>'+esc(c.w)+'</td><td>'+esc(c.m)+'</td>');t.appendChild(tr)});
+    tr.insertAdjacentHTML('beforeend','<td>'+esc(c.w)+(c.p?' <span class="count">('+esc(c.p)+')</span>':'')+'</td><td>'+esc(c.m)+'</td>');t.appendChild(tr)});
 }
 
 /* ---------- reading files ---------- */
-async function pdfLines(file){
+const NON=/[\u0370-\u03FF\u0400-\u04FF\u0590-\u06FF\u0900-\u0DFF\u0E00-\u0EFF\u1100-\u11FF\u3040-\u30FF\u3130-\u318F\u3400-\u9FFF\uAC00-\uD7AF]/;
+const LAT=/[A-Za-z\u00C0-\u024F]/;
+const splitCells=t=>t.split(/\t+|\s{2,}/).map(s=>s.trim()).filter(Boolean);
+
+/* Every reader returns "rows"; each row is a list of cells (table columns) */
+async function pdfRows(file){
   if(!window.pdfjsLib)throw new Error('PDF reader failed to load.');
   pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  const doc=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise,lines=[];
+  const doc=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise,rows=[];
   for(let p=1;p<=doc.numPages;p++){
     status('Reading page '+p+' of '+doc.numPages+'…');
-    const tc=await (await doc.getPage(p)).getTextContent();let y=null,s='';
-    tc.items.forEach(it=>{const yy=Math.round(it.transform[5]);
-      if(y!==null&&Math.abs(yy-y)>3){if(s.trim())lines.push(s.trim());s=''}
-      s+=(s&&it.str&&!/\s$/.test(s)&&!/^\s/.test(it.str)&&Math.abs(yy-y)<=3?'  ':'')+it.str;y=yy});
-    if(s.trim())lines.push(s.trim());
+    const tc=await (await doc.getPage(p)).getTextContent();
+    const its=tc.items.filter(i=>i.str&&i.str.trim()).map(i=>({s:i.str,x:i.transform[4],y:i.transform[5],w:i.width||0,fs:Math.abs(i.transform[3])||i.height||10}));
+    its.sort((a,b)=>b.y-a.y||a.x-b.x);
+    const lines=[];
+    its.forEach(it=>{const L=lines[lines.length-1];if(L&&Math.abs(L.y-it.y)<=Math.max(3,it.fs*.4))L.items.push(it);else lines.push({y:it.y,items:[it]})});
+    lines.forEach(L=>{
+      L.items.sort((a,b)=>a.x-b.x);
+      const cells=[];let c=null;
+      L.items.forEach(it=>{
+        if(c&&it.x-c.end<=it.fs){
+          const gap=it.x-c.end;
+          c.t+=(gap>it.fs*.15&&!/\s$/.test(c.t)&&!/^\s/.test(it.s)?' ':'')+it.s;c.end=it.x+it.w;
+        }else{c={t:it.s,end:it.x+it.w};cells.push(c)}
+      });
+      const r=cells.map(c=>c.t.replace(/\s+/g,' ').trim()).filter(Boolean);
+      if(r.length)rows.push(r);
+    });
   }
-  return lines;
+  return rows;
 }
-async function docLines(file){
-  const n=file.name.toLowerCase(),toLines=t=>t.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
-  if(n.endsWith('.txt'))return toLines(await file.text());
-  if(n.endsWith('.docx')){
-    if(!window.mammoth)throw new Error('Word reader failed to load.');
-    status('Reading Word document…');
-    return toLines((await mammoth.extractRawText({arrayBuffer:await file.arrayBuffer()})).value);
-  }
+async function docxRows(file){
+  if(!window.mammoth)throw new Error('Word reader failed to load.');
+  status('Reading Word document…');
+  const html=(await mammoth.convertToHtml({arrayBuffer:await file.arrayBuffer()})).value.replace(/<br\s*\/?>/gi,'\n');
+  const d=new DOMParser().parseFromString(html,'text/html'),rows=[];
+  d.body.childNodes.forEach(ch=>{
+    const tag=ch.nodeName;
+    if(tag==='TABLE'){ch.querySelectorAll('tr').forEach(tr=>{const r=[...tr.children].map(td=>td.textContent.replace(/\s+/g,' ').trim()).filter(Boolean);if(r.length)rows.push(r)})}
+    else if(ch.nodeType===1){ch.textContent.split('\n').forEach(x=>{x=x.trim();if(x)rows.push(splitCells(x))})}
+  });
+  return rows;
+}
+async function fileRows(file){
+  const n=file.name.toLowerCase();
+  if(n.endsWith('.txt'))return(await file.text()).split(/\r?\n/).map(x=>x.trim()).filter(Boolean).map(splitCells);
+  if(n.endsWith('.docx'))return docxRows(file);
   if(n.endsWith('.doc'))throw new Error('Old .doc files are not supported. Please save it as .docx first.');
-  return pdfLines(file);
+  return pdfRows(file);
 }
-function parseLocal(lines){
-  const out=[];let hit=0;
-  lines.forEach(ln=>{const m=ln.split(/\s+[-–—:=|→]\s+|\t|\s{2,}/).map(s=>s.trim()).filter(Boolean);
-    if(m.length>=2&&m[0].length<=60){hit++;out.push({w:m[0],m:m.slice(1).join(' / ')})}});
-  return{cards:out,ratio:lines.length?hit/lines.length:0};
+
+/* ---------- ways to turn rows into cards ---------- */
+const cleanW=s=>s.replace(/^\s*(?:\d+\s*[.)\]:-]?|[•·▪●○■□▶►*\-–—])\s+/,'').trim();
+function mk(w,m,p){
+  w=cleanW(w||'');m=(m||'').trim();
+  if(!w||!m||w.length>80||m.length>200||w===m||/^\d+$/.test(w))return null;
+  const o={w,m};if(p&&p.trim())o.p=p.trim();return o;
 }
+function sCols(rows){const out=[];rows.forEach(r=>{const c=r.slice();
+  if(c.length>=3&&/^\d+[.)]?$/.test(c[0]))c.shift();
+  if(c.length<2)return;
+  const k=mk(c[0],c[c.length-1],c.length>2?c.slice(1,-1).join(' '):'');if(k)out.push(k)});return out}
+function sCols2(rows){const out=[];rows.forEach(r=>{const c=r.slice();
+  if(c.length>=3&&/^\d+[.)]?$/.test(c[0]))c.shift();
+  if(c.length<2)return;
+  const k=mk(c[0],c[1]);if(k)out.push(k)});return out}
+function sScript(rows){
+  const out=[];
+  rows.forEach(r=>{
+    const t=r.join(' '),n=t.search(NON),l=t.search(LAT);
+    if(n<0||l<0)return;
+    let w,rest,l2=l;while(l2>0&&/[(\[（]/.test(t[l2-1]))l2--;
+    if(n<l){w=t.slice(0,l2);rest=t.slice(l2)}else{rest=t.slice(0,n);w=t.slice(n)}
+    let p='',m=rest.trim();
+    const pm=m.match(/^[(\[（]([^)\]）]+)[)\]）]\s*(.*)$/);
+    if(pm){if(pm[2]){p=pm[1];m=pm[2]}else m=pm[1]}
+    const k=mk(w,m,p);if(k)out.push(k);
+  });
+  return out;
+}
+function sSep(rows){
+  const out=[];
+  rows.forEach(r=>{
+    const t=r.join('\t');
+    let m=t.split(/\t|\s+[-–—:=|→>]+\s+/).map(s=>s.trim()).filter(Boolean);
+    if(m.length<2){const q=t.match(/^(.{1,60}?)\s*[:：=]\s*(.+)$/)||t.match(/^(.{1,60}?)\s*[(（]([^)）]+)[)）]\s*$/);if(q)m=[q[1],q[2]]}
+    if(m.length>=2){const k=mk(m[0],m.slice(1).join(' / '));if(k)out.push(k)}
+  });
+  return out;
+}
+function sAlt(rows){
+  const ls=rows.map(r=>r.join(' ')).filter(Boolean);
+  const sc=o=>{let n=0;for(let i=o;i+1<ls.length;i+=2)if(NON.test(ls[i])!==NON.test(ls[i+1]))n++;return n};
+  const o=sc(1)>sc(0)?1:0,out=[];
+  for(let i=o;i+1<ls.length;i+=2){let a=ls[i],b=ls[i+1];if(NON.test(b)&&!NON.test(a)){const x=a;a=b;b=x}const k=mk(a,b);if(k)out.push(k)}
+  return out;
+}
+const STRAT={cols:sCols,cols2:sCols2,script:sScript,sep:sSep,alt:sAlt};
+const LABEL={auto:'Auto-detect',cols:'Columns: word | pronunciation | meaning',cols2:'First two columns',script:'Word then meaning (script change)',sep:'Separators (- : = |)',alt:'Alternating lines'};
+function dedupe(c){const seen=new Set();return c.filter(x=>{const k=x.w.toLowerCase();if(seen.has(k))return false;seen.add(k);return true})}
+function analyze(rows,mode){
+  if(mode!=='auto')return{cards:dedupe(STRAT[mode](rows)),used:mode};
+  let best={cards:[],used:'cols'};
+  ['cols','script','sep','alt'].forEach(k=>{const c=dedupe(STRAT[k](rows));if(c.length>best.cards.length)best={cards:c,used:k}});
+  return best;
+}
+
 let sample=null;
 if(window.claude&&claude.use)claude.use('sample').then(s=>{sample=s}).catch(()=>{});
 async function parseAI(lines,l){
@@ -334,22 +417,51 @@ async function parseAI(lines,l){
   }
   return out;
 }
+
+/* ---------- review step ---------- */
 async function handle(file){
-  const l=LG[cur];
   if(!file||!/\.(pdf|docx|doc|txt)$/i.test(file.name)){status('Please choose a PDF, Word (.docx) or text file.',true);return}
   try{
-    const lines=await docLines(file);
-    if(!lines.length){status('No text found. If it is a scanned PDF, it needs OCR, which is not built yet.',true);return}
-    let{cards,ratio}=parseLocal(lines);
-    if(ratio<.4||cards.length<3){
-      if(sample)cards=await parseAI(lines,l);
-      else if(!cards.length){status('Could not find word and meaning pairs (like "casa - house") in this file.',true);return}
-    }
-    const seen=new Set(),uniq=[];
-    cards.forEach(c=>{const k=c.w.toLowerCase();if(!seen.has(k)){seen.add(k);uniq.push({w:c.w,m:c.m})}});
-    write([cur,'files','f'+Date.now()],{name:file.name,created:Date.now(),cards:uniq});
-    status('Added "'+file.name+'" with '+uniq.length+' flashcards.');
+    const rows=await fileRows(file);
+    if(!rows.length){status('No text found. If it is a scanned PDF (a picture of pages), it needs OCR, which is not built yet.',true);return}
+    pending={name:file.name,rows,mode:'auto',cards:[],used:'cols'};status('');
+    await runAnalyze();
   }catch(e){status('Something went wrong: '+(e&&e.message||e.code||'unknown error'),true)}
+}
+async function runAnalyze(){
+  const P=pending;if(!P)return;
+  try{
+    if(P.mode==='ai'&&sample){P.cards=dedupe(await parseAI(P.rows.map(r=>r.join(' ')),LG[cur]));P.used='ai';status('')}
+    else{
+      const r=analyze(P.rows,P.mode==='ai'?'auto':P.mode);P.cards=r.cards;P.used=r.used;
+      if(P.mode==='auto'&&P.cards.length<3&&sample){P.cards=dedupe(await parseAI(P.rows.map(x=>x.join(' ')),LG[cur]));P.used='ai';status('')}
+    }
+  }catch(e){status('Something went wrong: '+(e&&e.message||e.code||'unknown error'),true)}
+  renderReview();
+}
+function renderReview(){
+  const box=$('review'),P=pending;
+  if(!P){box.hidden=true;box.innerHTML='';return}
+  box.hidden=false;
+  const modes=Object.keys(LABEL);if(sample)modes.push('ai');
+  const opts=modes.map(k=>'<option value="'+k+'"'+(k===P.mode?' selected':'')+'>'+esc(k==='ai'?'Ask Claude':LABEL[k])+'</option>').join('');
+  const n=P.cards.length;
+  const usedTxt=P.mode==='auto'?' Auto-detect chose: '+(P.used==='ai'?'Claude':LABEL[P.used])+'.':'';
+  const prev=P.cards.slice(0,15).map(c=>'<tr><td>'+esc(c.w)+'</td><td>'+esc(c.p||'')+'</td><td>'+esc(c.m)+'</td></tr>').join('');
+  const raw=P.rows.slice(0,40).map(r=>esc(r.join('  ⟂  '))).join('\n');
+  box.innerHTML='<h2>Check "'+esc(P.name)+'" before saving</h2>'
+   +'<div class="row"><label class="count" for="rvMode">How to read it:</label><select id="rvMode">'+opts+'</select></div>'
+   +'<div class="count" style="margin:8px 0">'+(n?'Found '+n+' cards.'+usedTxt+' Preview of the first '+Math.min(15,n)+':':'Nothing found with this method. Try another option above, and open "What the app read" below to see the text.')+'</div>'
+   +(n?'<div class="wrap" style="max-height:230px"><table><tr><td class="count">Word</td><td class="count">Pronunciation</td><td class="count">Meaning</td></tr>'+prev+'</table></div>':'')
+   +'<div class="row" style="margin-top:10px"><button id="rvSave"'+(n?'':' disabled')+'>Save '+n+' cards</button><button class="ghost" id="rvCancel">Cancel</button></div>'
+   +'<details style="margin-top:10px"><summary class="count">What the app read from your file (cells split by ⟂)</summary><pre>'+raw+'</pre></details>';
+  $('rvMode').onchange=e=>{P.mode=e.target.value;runAnalyze()};
+  $('rvCancel').onclick=()=>{pending=null;renderReview();status('')};
+  $('rvSave').onclick=()=>{
+    if(!pending||!LG[cur])return;
+    write([cur,'files','f'+Date.now()],{name:P.name,created:Date.now(),cards:P.cards});
+    pending=null;renderReview();status('Added "'+P.name+'" with '+n+' flashcards.');
+  };
 }
 
 /* ---------- events ---------- */
@@ -367,7 +479,8 @@ $('hideM').onchange=e=>{hideM=e.target.checked;pref('lf_hide',hideM?'1':'0');idx
 const visCount=()=>{const m=cardMap();return seq.filter(id=>m[id]&&!(hideM&&m[id].d)).length};
 $('next').onclick=()=>{const n=visCount();if(n){idx=(idx+1)%n;flipped=false;renderStudy()}};
 $('prev').onclick=()=>{const n=visCount();if(n){idx=(idx-1+n)%n;flipped=false;renderStudy()}};
-$('shuf').onclick=()=>{for(let i=seq.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[seq[i],seq[j]]=[seq[j],seq[i]]}idx=0;flipped=false;renderStudy()};
+$('shuf').onclick=()=>{shuffleSeq();idx=0;flipped=false;renderStudy()};
+$('shufOn').onchange=e=>{shufOn=e.target.checked;pref('lf_shuf',shufOn?'1':'0');if(shufOn)shuffleSeq();else seq=[];idx=0;flipped=false;renderStudy()};
 $('bk').onclick=()=>{
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(LG,null,1)],{type:'application/json'}));
   a.download='language-folders-backup.json';document.body.appendChild(a);a.click();a.remove();
