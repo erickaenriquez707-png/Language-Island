@@ -110,6 +110,7 @@ body.dragmode,body.dragmode *{cursor:grabbing!important}
 <label class="tog"><input type="checkbox" id="rev"> Reverse cards</label>
 <label class="tog"><input type="checkbox" id="hideM"> Hide mastered</label>
 <label class="tog"><input type="checkbox" id="shufOn"> Shuffle order</label>
+<label class="tog"><input type="checkbox" id="onlineVoice"> Online voice</label>
 </div>
 <div class="count" id="prog" style="margin-top:6px"></div>
 <div id="deckBox" class="deck" style="margin-top:12px"></div>
@@ -323,13 +324,35 @@ function cardMap(){
   const m={};filesOf(LG[cur]).filter(f=>sel===null||f.id===sel).forEach(f=>f.cards.forEach(c=>{m[f.id+'|'+c.key]=Object.assign({fid:f.id},c)}));
   return m;
 }
+/* Audio: device voice when it works, otherwise an online voice (needed inside app wrappers/WebViews) */
+let useAudio=pref('lf_audio')==='1',curAudio=null;
+function gLang(code){
+  if(/^zh/i.test(code))return code.toLowerCase()==='zh-cn'?'zh-CN':'zh-TW';
+  const b=code.split('-')[0].toLowerCase();
+  return b==='fil'?'tl':b==='nb'?'no':b;
+}
+function speakAudio(text,code){
+  try{if(curAudio)curAudio.pause()}catch(e){}
+  const a=new Audio('https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl='+encodeURIComponent(gLang(code))+'&q='+encodeURIComponent(text));
+  curAudio=a;
+  a.onerror=()=>status('Could not play the audio. Check your internet connection.',true);
+  const pr=a.play();
+  if(pr&&pr.catch)pr.catch(()=>status('Could not play the audio. Tap the speaker again or check your connection.',true));
+}
 function speak(text,code){
-  if(!('speechSynthesis' in window)){status('Audio is not supported in this browser.',true);return}
-  speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang=code;
-  const base=code.split('-')[0].toLowerCase(),vs=speechSynthesis.getVoices();
+  const ss=window.speechSynthesis;
+  if(useAudio||!ss||typeof SpeechSynthesisUtterance==='undefined'){speakAudio(text,code);return}
+  ss.cancel();
+  const base=code.split('-')[0].toLowerCase(),vs=ss.getVoices();
   const v=vs.find(v=>v.lang.toLowerCase()===code.toLowerCase())||vs.find(v=>v.lang.toLowerCase().split(/[-_]/)[0]===base);
-  if(v)u.voice=v;else if(vs.length)status('No installed voice found for this language. Add one in your device speech settings.',true);
-  u.rate=.85;speechSynthesis.speak(u);
+  if(vs.length&&!v){speakAudio(text,code);return}
+  const u=new SpeechSynthesisUtterance(text);u.lang=code;if(v)u.voice=v;u.rate=.85;
+  let started=false,fell=false;
+  const fall=()=>{if(started||fell)return;fell=true;try{ss.cancel()}catch(e){}useAudio=true;pref('lf_audio','1');speakAudio(text,code)};
+  u.onstart=()=>{started=true};
+  u.onerror=fall;
+  setTimeout(fall,1500);
+  ss.speak(u);
 }
 function shuffleSeq(){for(let i=seq.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[seq[i],seq[j]]=[seq[j],seq[i]]}}
 function renderStudy(){
@@ -337,7 +360,7 @@ function renderStudy(){
   seq=seq.filter(id=>map[id]);ids.forEach(id=>{if(!have.has(id))seq.push(id)});
   if(!have.size&&shufOn)shuffleSeq();
   const f=filesOf(l).find(x=>x.id===sel);$('studyT').textContent=f?f.name:'All flashcards';
-  $('rev').checked=reverse;$('hideM').checked=hideM;$('shufOn').checked=shufOn;
+  $('rev').checked=reverse;$('hideM').checked=hideM;$('shufOn').checked=shufOn;$('onlineVoice').checked=useAudio;
   const done=ids.filter(id=>map[id].d).length;
   $('prog').textContent=done+' of '+ids.length+' mastered';
   const vis=seq.filter(id=>!(hideM&&map[id].d)).map(id=>map[id]);
@@ -576,6 +599,7 @@ const visCount=()=>{const m=cardMap();return seq.filter(id=>m[id]&&!(hideM&&m[id
 $('next').onclick=()=>{const n=visCount();if(n){idx=(idx+1)%n;flipped=false;renderStudy()}};
 $('prev').onclick=()=>{const n=visCount();if(n){idx=(idx-1+n)%n;flipped=false;renderStudy()}};
 $('shuf').onclick=()=>{shuffleSeq();idx=0;flipped=false;renderStudy()};
+$('onlineVoice').onchange=e=>{useAudio=e.target.checked;pref('lf_audio',useAudio?'1':'0')};
 $('shufOn').onchange=e=>{shufOn=e.target.checked;pref('lf_shuf',shufOn?'1':'0');if(shufOn)shuffleSeq();else seq=[];idx=0;flipped=false;renderStudy()};
 $('bk').onclick=()=>{
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(LG,null,1)],{type:'application/json'}));
