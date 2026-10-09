@@ -96,8 +96,15 @@ textarea{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(-
 <div id="fview" hidden>
 <div class="row" style="margin-bottom:12px">
 <button class="ghost" id="back">← All folders</button>
+<button class="ghost" id="editLang">Edit folder</button>
 <button class="ghost" id="delLang">Delete folder</button>
 </div>
+<section id="edBar" hidden>
+<h2>Edit folder</h2>
+<div class="row"><input id="edName" placeholder="Folder name" style="flex:1 1 160px" autocomplete="off"><select id="edLang" style="flex:1 1 160px" aria-label="Language"></select></div>
+<div class="count" style="margin-top:6px">The language controls which voice is used for pronunciation.</div>
+<div class="row" style="margin-top:8px"><button id="edSave">Save</button><button class="ghost" id="edCancel">Cancel</button></div>
+</section>
 <section>
 <h2>Type a word</h2>
 <div class="row">
@@ -138,7 +145,7 @@ textarea{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(-
 <div class="row" style="justify-content:center;margin-top:12px" id="ctl">
 <button class="ghost" id="prev">Prev</button><button class="ghost" id="shuf">Shuffle</button><button class="ghost" id="next">Next</button>
 </div>
-<h2 style="margin-top:18px">Checklist</h2>
+<h2 id="ckH" style="margin-top:18px">Checklist</h2>
 <div class="wrap"><table id="tbl"></table></div>
 </section>
 </div>
@@ -223,6 +230,7 @@ function connect(){
 
 /* ---------- state ---------- */
 let view='home',cur=null,sel=null,studying=false,seq=[],idx=0,flipped=false,loaded=false,applied=null;
+let ren=null,edit=null,scrollList=false;
 let pending=null,shufOn=pref('lf_shuf')==='1';
 let reverse=pref('lf_reverse')==='1',hideM=pref('lf_hide')==='1';
 function status(t,err){const s=$('status');s.textContent=t;s.className=err?'err':''}
@@ -309,7 +317,7 @@ function go(h){
 function applyHash(h){
   h=h||location.hash||'#/';
   if(h===applied)return;
-  applied=h;pending=null;renderReview();
+  applied=h;pending=null;ren=null;edit=null;$('edBar').hidden=true;renderReview();
   const m=h.match(/^#\/f\/([^\/]+)(?:\/s\/([^\/]+))?$/);
   if(!m){view='home';cur=null;sel=null;studying=false}
   else{
@@ -318,10 +326,11 @@ function applyHash(h){
     else{sel=null;studying=false}
   }
   render();
-  if(view==='folder'&&studying)$('study').scrollIntoView({behavior:'smooth'});else window.scrollTo(0,0);
+  if(view==='folder'&&studying){const tg=scrollList?$('ckH'):$('study');scrollList=false;tg.scrollIntoView({behavior:'smooth'})}else window.scrollTo(0,0);
 }
 function openFolder(k){go('#/f/'+encodeURIComponent(k))}
 function goHome(){go('#/')}
+function saveRen(){const r=ren;if(!r)return;const n=(r.val||'').trim();ren=null;if(n)write([cur,'files',r.id,'name'],n);else renderFolder()}
 function renderFolder(){
   const l=LG[cur];
   $('home').hidden=true;$('fview').hidden=false;$('sub').hidden=true;$('title').textContent='📂 '+l.name;
@@ -332,14 +341,23 @@ function renderFolder(){
     all.innerHTML='<div class="t"><b>All flashcards</b><small>'+s.n+' cards · '+s.d+' mastered</small></div>';
     all.appendChild(mkbtn('Study all',()=>study(null),1));box.appendChild(all);
     fs.forEach(f=>{const d=document.createElement('div');d.className='pdf';const m=f.cards.filter(c=>c.d).length;
+      if(ren&&ren.id===f.id){
+        d.innerHTML='<div class="t"><input class="renIn" aria-label="File name" style="width:100%"></div>';
+        const inp=d.querySelector('input');inp.value=ren.val;inp.oninput=()=>{ren.val=inp.value};
+        inp.onkeydown=e=>{if(e.key==='Enter')saveRen();if(e.key==='Escape'){ren=null;renderFolder()}};
+        d.appendChild(mkbtn('Save',saveRen));d.appendChild(mkbtn('Cancel',()=>{ren=null;renderFolder()},1));box.appendChild(d);return;
+      }
       d.innerHTML='<div class="t">'+(/\.docx?$/i.test(f.name)?'📝':'📄')+' '+esc(f.name)+'<small>'+f.cards.length+' cards · '+m+' mastered</small></div>';
       d.appendChild(mkbtn('Study',()=>study(f.id),1));
+      d.appendChild(mkbtn('Edit',()=>{scrollList=true;study(f.id)},1));
+      d.appendChild(mkbtn('Rename',()=>{ren={id:f.id,val:f.name};renderFolder()},1));
       const del=mkbtn('Delete',null,1);
       arm(del,'Delete',()=>{if(sel===f.id){sel=null;studying=false}write([cur,'files',f.id],null)});
       d.appendChild(del);box.appendChild(d)});
   }
   $('study').hidden=!studying;
   if(studying)renderStudy();
+  if(ren){const i=document.querySelector('.renIn');if(i&&document.activeElement!==i){i.focus()}}
 }
 function study(id){applied=null;go('#/f/'+encodeURIComponent(cur)+'/s/'+(id===null?'all':encodeURIComponent(id)))}
 function cardMap(){
@@ -355,7 +373,7 @@ function audioMsg(t,err){const m=$('audioMsg');if(m){m.textContent=t||'';m.style
 function gLang(code){
   if(/^zh/i.test(code))return code.toLowerCase()==='zh-cn'?'zh-CN':'zh-TW';
   const b=code.split('-')[0].toLowerCase();
-  return b==='fil'?'tl':b==='nb'?'no':b;
+  return b==='fil'?'tl':b==='nb'?'no':b==='tet'?'pt':b;
 }
 function tryPlay(){
   if(ui>=urls.length){audioMsg('The online voice could not play. Check your internet connection.',true);return}
@@ -372,7 +390,7 @@ function playOnline(text,code){
   ui=0;tryPlay();
 }
 function speak(text,code){
-  audioMsg('');
+  audioMsg(/^tet/i.test(code)?'Tetum has no voice of its own, so this uses a Portuguese voice as an approximation.':'');
   const ss=window.speechSynthesis;
   if(!useAudio&&ss&&typeof SpeechSynthesisUtterance!=='undefined'){
     const base=code.split('-')[0].toLowerCase(),vs=ss.getVoices();
@@ -420,7 +438,19 @@ function renderStudy(){
     box.appendChild(fc);box.appendChild(row);
   }
   const t=$('tbl');t.innerHTML='';
-  ids.forEach(id=>{const c=map[id],tr=document.createElement('tr');if(c.d)tr.className='done';
+  ids.forEach(id=>{const c=map[id],tr=document.createElement('tr');
+    if(edit&&edit.id===id){
+      const td=document.createElement('td');td.colSpan=4;
+      td.innerHTML='<div style="display:flex;flex-direction:column;gap:6px;padding:6px 0"><input class="edW" placeholder="Word" aria-label="Word"><input class="edP" placeholder="Pronunciation (optional)" aria-label="Pronunciation"><input class="edM" placeholder="Meaning" aria-label="Meaning"><div class="row"><button class="edS">Save</button><button class="ghost edC">Cancel</button></div></div>';
+      const W=td.querySelector('.edW'),P=td.querySelector('.edP'),M=td.querySelector('.edM'),S2=td.querySelector('.edS');
+      W.value=edit.w;P.value=edit.p;M.value=edit.m;
+      W.oninput=()=>{edit.w=W.value};P.oninput=()=>{edit.p=P.value};M.oninput=()=>{edit.m=M.value};
+      [W,P,M].forEach(i=>i.onkeydown=e=>{if(e.key==='Enter')S2.click();if(e.key==='Escape'){edit=null;renderStudy()}});
+      td.querySelector('.edC').onclick=()=>{edit=null;renderStudy()};
+      S2.onclick=()=>{const w=edit.w.trim(),m=edit.m.trim(),p=edit.p.trim();if(!w||!m)return;const o={w,m};if(p)o.p=p;if(c.d)o.d=true;edit=null;write([cur,'files',c.fid,'cards',c.key],o)};
+      tr.appendChild(td);t.appendChild(tr);return;
+    }
+    if(c.d)tr.className='done';
     const td=document.createElement('td');td.className='ck';
     const ck=document.createElement('input');ck.type='checkbox';ck.checked=c.d;ck.setAttribute('aria-label','Mastered: '+c.w);
     ck.onchange=()=>write([cur,'files',c.fid,'cards',c.key,'d'],ck.checked?true:null);
@@ -429,7 +459,9 @@ function renderStudy(){
     const dtd=document.createElement('td');dtd.style.textAlign='right';
     const db=mkbtn('✕',null,1);db.title='Delete this card';db.setAttribute('aria-label','Delete card '+c.w);db.style.padding='4px 8px';
     arm(db,'✕',()=>write([cur,'files',c.fid,'cards',c.key],null),'Sure?');
-    dtd.appendChild(db);tr.appendChild(dtd);t.appendChild(tr)});
+    const eb=mkbtn('✎',()=>{edit={id,w:c.w,p:c.p||'',m:c.m};renderStudy();setTimeout(()=>{const i=document.querySelector('.edW');if(i)i.focus()},0)},1);
+    eb.title='Edit this card';eb.setAttribute('aria-label','Edit card '+c.w);eb.style.padding='4px 8px';eb.style.marginRight='4px';
+    dtd.style.whiteSpace='nowrap';dtd.appendChild(eb);dtd.appendChild(db);tr.appendChild(dtd);t.appendChild(tr)});
 }
 
 /* ---------- reading files ---------- */
@@ -613,7 +645,7 @@ const LANGS=[
 ['Norwegian','nb-NO'],['Persian (Farsi)','fa-IR'],['Polish','pl-PL'],['Portuguese (Brazil)','pt-BR'],['Portuguese (Portugal)','pt-PT'],
 ['Punjabi','pa-IN'],['Romanian','ro-RO'],['Russian','ru-RU'],['Serbian','sr-RS'],['Sinhala','si-LK'],['Slovak','sk-SK'],
 ['Slovenian','sl-SI'],['Spanish (Mexico)','es-MX'],['Spanish (Spain)','es-ES'],['Swahili','sw-KE'],['Swedish','sv-SE'],
-['Tamil','ta-IN'],['Telugu','te-IN'],['Thai','th-TH'],['Turkish','tr-TR'],['Ukrainian','uk-UA'],['Urdu','ur-PK'],['Uzbek','uz-UZ'],
+['Tamil','ta-IN'],['Telugu','te-IN'],['Tetum','tet-TL'],['Thai','th-TH'],['Turkish','tr-TR'],['Ukrainian','uk-UA'],['Urdu','ur-PK'],['Uzbek','uz-UZ'],
 ['Vietnamese','vi-VN'],['Welsh','cy-GB'],['Zulu','zu-ZA']];
 (function(){const sel=$('langPick');LANGS.forEach(l=>{const o=document.createElement('option');o.value=l[1];o.textContent=l[0];sel.appendChild(o)});
  const ot=document.createElement('option');ot.value='__other';ot.textContent='Other (type your own)…';sel.appendChild(ot);
@@ -669,6 +701,21 @@ $('bulkAdd').onclick=bulkAdd;
 $('bulkClear').onclick=()=>{$('bulk').value='';$('bulkMsg').textContent=''};
 $('addCard').onclick=addTyped;
 ['tw','tp','tm'].forEach(id=>$(id).addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addTyped()}}));
+$('editLang').onclick=()=>{
+  const l=LG[cur];if(!l)return;
+  $('edName').value=l.name;
+  const sel=$('edLang');sel.innerHTML='';let found=false;
+  LANGS.forEach(x=>{const o=document.createElement('option');o.value=x[1];o.textContent=x[0];if(x[1].toLowerCase()===String(l.code).toLowerCase()){o.selected=true;found=true}sel.appendChild(o)});
+  if(!found){const o=document.createElement('option');o.value=l.code;o.textContent='Current: '+l.code;o.selected=true;sel.insertBefore(o,sel.firstChild)}
+  $('edBar').hidden=false;$('edName').focus();
+};
+$('edCancel').onclick=()=>{$('edBar').hidden=true};
+$('edSave').onclick=()=>{
+  const l=LG[cur];if(!l)return;const n=$('edName').value.trim();if(!n)return;
+  const c=$('edLang').value;$('edBar').hidden=true;
+  if(c&&c!==l.code)write([cur,'code'],c);
+  if(n!==l.name)write([cur,'name'],n);
+};
 $('back').onclick=goHome;
 $('studyBack').onclick=()=>go('#/f/'+encodeURIComponent(cur));
 $('hBack').onclick=()=>{try{history.back()}catch(e){goHome()}};
