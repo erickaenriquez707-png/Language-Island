@@ -59,6 +59,7 @@ pre{white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:200px;o
 .grip:hover{background:var(--line)}
 .folder.dragging{opacity:.45;outline:2px dashed var(--acc)}
 body.dragmode,body.dragmode *{cursor:grabbing!important}
+textarea{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:9px 11px;font:inherit;resize:vertical}
 [hidden]{display:none!important}
 </style>
 </head>
@@ -108,6 +109,12 @@ body.dragmode,body.dragmode *{cursor:grabbing!important}
 <button id="addCard">Add card</button>
 </div>
 <div class="count" id="typedMsg" style="margin-top:8px;min-height:18px"></div>
+<details style="margin-top:10px"><summary class="count" style="cursor:pointer">Add many at once</summary>
+<div class="count" style="margin:8px 0">One per line. Put a dash, tab, semicolon or comma between the word and its meaning, like <b>안녕하세요 - Hello</b>. With three parts, the middle one is the pronunciation: <b>안녕하세요 | annyeonghaseyo | Hello</b>. Pasting two columns from Excel or Google Sheets works too.</div>
+<textarea id="bulk" rows="7" placeholder="안녕하세요 - Hello&#10;감사합니다 - Thank you&#10;사랑 | sarang | love"></textarea>
+<div class="row" style="margin-top:8px"><button id="bulkAdd">Add all</button><button class="ghost" id="bulkClear">Clear</button></div>
+<div class="count" id="bulkMsg" style="margin-top:8px;min-height:18px"></div>
+</details>
 </section>
 <section>
 <h2>Add a PDF or Word doc</h2>
@@ -634,6 +641,32 @@ function addTyped(){
   $('tw').value='';$('tm').value='';$('tp').value='';typedMsg('Added "'+w+'". Add another, or study the "Typed words" set below.');
   $('tw').focus();
 }
+function parseBulkLine(line){
+  line=line.trim();if(!line)return null;
+  let parts=line.split(/\t+|\s+[-–—=:|→]\s+|\s*[;|]\s*/).map(x=>x.trim()).filter(Boolean);
+  if(parts.length<2){const i=line.indexOf(',');if(i>0)parts=[line.slice(0,i).trim(),line.slice(i+1).trim()]}
+  if(parts.length>=2)return mk(parts[0],parts[parts.length-1],parts.length>2?parts.slice(1,-1).join(' '):'');
+  return sScript([[line]])[0]||null;
+}
+function bulkAdd(){
+  if(!LG[cur])return;
+  const msg=t=>{$('bulkMsg').textContent=t};
+  const lines=$('bulk').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  if(!lines.length){msg('Paste or type some lines first.');return}
+  const files=filesOf(LG[cur]),seen=new Set();
+  files.forEach(f=>f.cards.forEach(c=>seen.add((c.w+'\u0001'+c.m).toLowerCase())));
+  const fresh=[],badLines=[];let dup=0;
+  lines.forEach(l=>{const c=parseBulkLine(l);if(!c){badLines.push(l);return}const k=(c.w+'\u0001'+c.m).toLowerCase();if(seen.has(k)){dup++;return}seen.add(k);fresh.push(c)});
+  const bad=badLines.length,eg=bad?' (for example: "'+badLines[0].slice(0,40)+'")':'';
+  if(!fresh.length){msg('Nothing new to add. '+dup+' already in this folder, '+bad+' lines not understood'+eg+'.');return}
+  const typed=files.find(f=>f.id==='typed');
+  if(!typed)write([cur,'files','typed'],{name:'Typed words',created:Date.now(),cards:fresh});
+  else{const all=typed.cards.map(c=>{const o={w:c.w,m:c.m};if(c.p)o.p=c.p;if(c.d)o.d=true;return o}).concat(fresh);write([cur,'files','typed','cards'],all)}
+  $('bulk').value='';
+  msg('Added '+fresh.length+' cards'+(dup?', skipped '+dup+' duplicates':'')+(bad?', and '+bad+' lines could not be understood'+eg:'')+'.');
+}
+$('bulkAdd').onclick=bulkAdd;
+$('bulkClear').onclick=()=>{$('bulk').value='';$('bulkMsg').textContent=''};
 $('addCard').onclick=addTyped;
 ['tw','tp','tm'].forEach(id=>$(id).addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addTyped()}}));
 $('back').onclick=goHome;
