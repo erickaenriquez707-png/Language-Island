@@ -98,6 +98,18 @@ body.dragmode,body.dragmode *{cursor:grabbing!important}
 <button class="ghost" id="delLang">Delete folder</button>
 </div>
 <section>
+<h2>Type a word</h2>
+<div class="row">
+<input id="tw" placeholder="Word" style="flex:1 1 140px" autocomplete="off" autocapitalize="off">
+<input id="tp" placeholder="Pronunciation (optional)" style="flex:1 1 140px" autocomplete="off" autocapitalize="off">
+</div>
+<div class="row" style="margin-top:8px">
+<input id="tm" placeholder="Meaning" style="flex:2 1 200px" autocomplete="off">
+<button id="addCard">Add card</button>
+</div>
+<div class="count" id="typedMsg" style="margin-top:8px;min-height:18px"></div>
+</section>
+<section>
 <h2>Add a PDF or Word doc</h2>
 <div class="row" style="margin-bottom:10px"><label for="mean" class="count">Meanings in:</label><input id="mean" value="English" style="flex:1 1 120px"></div>
 <div class="drop" id="drop">Drop a PDF, Word (.docx) or text file here, or tap to choose<input id="file" type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" hidden></div>
@@ -209,10 +221,11 @@ let reverse=pref('lf_reverse')==='1',hideM=pref('lf_hide')==='1';
 function status(t,err){const s=$('status');s.textContent=t;s.className=err?'err':''}
 const statCount=l=>{let n=0,d=0;filesOf(l).forEach(f=>f.cards.forEach(c=>{n++;if(c.d)d++}));return{n,d}};
 
-function arm(b,label,fn){
+function arm(b,label,fn,ct){
+  ct=ct||'Tap again to confirm';
   let on=false,t;
   b.onclick=()=>{
-    if(!on){on=true;b.textContent='Tap again to confirm';b.classList.add('danger');
+    if(!on){on=true;b.textContent=ct;b.classList.add('danger');
       t=setTimeout(()=>{on=false;b.textContent=label;b.classList.remove('danger')},4000)}
     else{clearTimeout(t);on=false;b.textContent=label;b.classList.remove('danger');fn()}
   };
@@ -405,7 +418,11 @@ function renderStudy(){
     const ck=document.createElement('input');ck.type='checkbox';ck.checked=c.d;ck.setAttribute('aria-label','Mastered: '+c.w);
     ck.onchange=()=>write([cur,'files',c.fid,'cards',c.key,'d'],ck.checked?true:null);
     td.appendChild(ck);tr.appendChild(td);
-    tr.insertAdjacentHTML('beforeend','<td>'+esc(c.w)+(c.p?' <span class="count">('+esc(c.p)+')</span>':'')+'</td><td>'+esc(c.m)+'</td>');t.appendChild(tr)});
+    tr.insertAdjacentHTML('beforeend','<td>'+esc(c.w)+(c.p?' <span class="count">('+esc(c.p)+')</span>':'')+'</td><td>'+esc(c.m)+'</td>');
+    const dtd=document.createElement('td');dtd.style.textAlign='right';
+    const db=mkbtn('✕',null,1);db.title='Delete this card';db.setAttribute('aria-label','Delete card '+c.w);db.style.padding='4px 8px';
+    arm(db,'✕',()=>write([cur,'files',c.fid,'cards',c.key],null),'Sure?');
+    dtd.appendChild(db);tr.appendChild(dtd);t.appendChild(tr)});
 }
 
 /* ---------- reading files ---------- */
@@ -603,6 +620,22 @@ $('addLang').onclick=()=>{
   if(!LG[k]){const os=Object.values(LG).map(x=>x.o).filter(x=>x!=null);write([k],{name:n,code:c,o:os.length?Math.max(...os)+1:Object.keys(LG).length})}
   $('langPick').value='';$('otherRow').hidden=true;$('newName').value='';$('newCode').value='';openFolder(k);
 };
+function typedMsg(t,err){const m=$('typedMsg');m.textContent=t;m.style.color=err?'var(--warn)':''}
+function addTyped(){
+  const w=$('tw').value.trim(),m=$('tm').value.trim(),pr=$('tp').value.trim();
+  if(!LG[cur])return;
+  if(!w||!m){typedMsg('Type both the word and its meaning.',true);return}
+  const card={w,m};if(pr)card.p=pr;
+  const files=filesOf(LG[cur]);
+  if(files.some(f=>f.cards.some(c=>c.w.toLowerCase()===w.toLowerCase()&&c.m.toLowerCase()===m.toLowerCase()))){typedMsg('That word and meaning are already in this folder.',true);return}
+  const typed=files.find(f=>f.id==='typed');
+  if(!typed)write([cur,'files','typed'],{name:'Typed words',created:Date.now(),cards:[card]});
+  else{const next=typed.cards.reduce((n,c)=>Math.max(n,Number(c.key)+1),0);write([cur,'files','typed','cards',String(next)],card)}
+  $('tw').value='';$('tm').value='';$('tp').value='';typedMsg('Added "'+w+'". Add another, or study the "Typed words" set below.');
+  $('tw').focus();
+}
+$('addCard').onclick=addTyped;
+['tw','tp','tm'].forEach(id=>$(id).addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addTyped()}}));
 $('back').onclick=goHome;
 $('studyBack').onclick=()=>go('#/f/'+encodeURIComponent(cur));
 $('hBack').onclick=()=>{try{history.back()}catch(e){goHome()}};
