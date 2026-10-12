@@ -131,6 +131,20 @@ textarea{width:100%;background:var(--bg);color:var(--ink);border:1px solid var(-
 <div id="review" hidden style="margin-top:12px"></div>
 </section>
 <section><h2>Files in this folder</h2><div id="pdfs"></div></section>
+<section id="vocabSec">
+<details id="vocabD">
+<summary style="cursor:pointer;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)">Vocabulary from sentences</summary>
+<div class="count" style="margin:10px 0">Lists every word used in your sentence cards (any card whose word side has two or more words). Type a meaning for a word, or let the app look them up.</div>
+<div class="row"><select id="vScope" style="flex:1 1 180px" aria-label="Which files"></select><input id="vSearch" placeholder="Search words" style="flex:1 1 140px" autocomplete="off"></div>
+<label class="tog" style="margin-top:8px"><input type="checkbox" id="vMissing"> Only words without a meaning</label>
+<div class="row" style="margin-top:8px"><button class="ghost" id="vAuto">Auto-fill meanings</button><button class="ghost" id="vMake">Make a flashcard set</button></div>
+<div class="count" id="vSum" style="margin-top:8px"></div>
+<div class="count" id="vMsg" style="min-height:18px"></div>
+<div class="count" id="vAudio" style="min-height:18px"></div>
+<div class="wrap" style="max-height:480px;margin-top:6px"><table id="vTbl"></table></div>
+<div style="margin-top:8px"><button class="ghost" id="vMore" hidden>Show more</button></div>
+</details>
+</section>
 <section id="study" hidden>
 <div class="row" style="justify-content:space-between;margin-bottom:8px"><h2 id="studyT" style="margin:0">Flashcards</h2><button class="ghost" id="studyBack">← Back to files</button></div>
 <div class="row" style="gap:16px">
@@ -358,6 +372,7 @@ function renderFolder(){
   $('study').hidden=!studying;
   if(studying)renderStudy();
   if(ren){const i=document.querySelector('.renIn');if(i&&document.activeElement!==i){i.focus()}}
+  renderVocab();
 }
 function study(id){applied=null;go('#/f/'+encodeURIComponent(cur)+'/s/'+(id===null?'all':encodeURIComponent(id)))}
 function cardMap(){
@@ -369,7 +384,7 @@ function cardMap(){
 let useAudio=pref('lf_online')==='1';
 const AU=new Audio();AU.preload='auto';
 let urls=[],ui=0;
-function audioMsg(t,err){const m=$('audioMsg');if(m){m.textContent=t||'';m.style.color=err?'var(--warn)':''}}
+function audioMsg(t,err){const m=$('audioMsg');if(m){m.textContent=t||'';m.style.color=err?'var(--warn)':''}const v=$('vAudio');if(v){v.textContent=t||'';v.style.color=err?'var(--warn)':''}}
 function gLang(code){
   if(/^zh/i.test(code))return code.toLowerCase()==='zh-cn'?'zh-CN':'zh-TW';
   const b=code.split('-')[0].toLowerCase();
@@ -408,6 +423,101 @@ function speak(text,code){
   playOnline(text,code);
 }
 try{if(window.speechSynthesis)speechSynthesis.getVoices()}catch(e){}
+/* ---------- vocabulary from sentences ---------- */
+const encKey=s=>encodeURIComponent(s).replace(/\./g,'%2E');
+const normW=s=>String(s).toLowerCase().normalize('NFC');
+let vLimit=100,vBusy=false;const vOpen=new Set();
+function segFor(code){try{return new Intl.Segmenter(String(code||'').split('-')[0]||undefined,{granularity:'word'})}catch(e){return null}}
+function toks(text,seg){
+  let out=[];
+  if(seg){for(const x of seg.segment(text)){if(x.isWordLike)out.push(x.segment)}}
+  else out=text.split(/[\s,.;:!?¡¿"“”‘’()\[\]{}«»、。！？，；：…~—–]+/);
+  return out.map(t=>t.replace(/^['’\-]+|['’\-]+$/g,'').trim()).filter(t=>t&&!/^[\d.,%]+$/.test(t));
+}
+function buildVocab(scope){
+  const l=LG[cur],seg=segFor(l.code),saved=l.vocab||{};
+  const all=filesOf(l).filter(f=>f.id!=='vocab'),known=new Map(),map=new Map();let sent=0;
+  all.forEach(f=>f.cards.forEach(c=>{if(toks(c.w,seg).length<2){const k=normW(c.w.trim());if(k&&!known.has(k))known.set(k,c.m)}}));
+  all.filter(f=>scope==='all'||f.id===scope).forEach(f=>f.cards.forEach(c=>{
+    const t=toks(c.w,seg);if(t.length<2)return;sent++;const seen=new Set();
+    t.forEach(x=>{const k=normW(x);let e=map.get(k);if(!e){e={k,w:x,n:0,ex:[]};map.set(k,e)}e.n++;if(!seen.has(k)){seen.add(k);if(e.ex.length<8)e.ex.push(c)}});
+  }));
+  const list=[...map.values()].map(e=>{const key=encKey(e.k),sv=Object.prototype.hasOwnProperty.call(saved,key)?saved[key]:null;
+    e.m=sv&&sv.m?sv.m:(known.get(e.k)||'');e.src=sv&&sv.m?(sv.a?'auto':'saved'):(known.has(e.k)?'card':'');return e});
+  list.sort((a,b)=>b.n-a.n||(a.k<b.k?-1:1));
+  return{list,sent};
+}
+function saveVocab(e,m,auto){
+  const path=[cur,'vocab',encKey(e.k)],val=m?(auto?{w:e.w,m,a:true}:{w:e.w,m}):null;
+  setAt(path,val);cache();send(val==null?'DELETE':'PUT',path,val);e.m=m;
+}
+function renderVocab(){
+  const D=$('vocabD');if(!D||!D.open||!LG[cur])return;
+  if($('vTbl').contains(document.activeElement))return;
+  const l=LG[cur],sc=$('vScope');
+  if(document.activeElement!==sc){const prev=sc.value||'all';
+    sc.innerHTML='<option value="all">All files in this folder</option>'+filesOf(l).filter(f=>f.id!=='vocab').map(f=>'<option value="'+esc(f.id)+'">'+esc(f.name)+'</option>').join('');
+    sc.value=[...sc.options].some(o=>o.value===prev)?prev:'all'}
+  const{list,sent}=buildVocab(sc.value||'all');
+  const q=$('vSearch').value.trim().toLowerCase(),only=$('vMissing').checked;
+  const rows=list.filter(e=>(!q||e.k.includes(q)||(e.m||'').toLowerCase().includes(q))&&(!only||!e.m));
+  $('vSum').textContent=sent?list.length+' different words from '+sent+' sentences · '+list.filter(e=>!e.m).length+' without a meaning':'No sentence cards found yet. A sentence is any card whose word side has two or more words.';
+  const t=$('vTbl');t.innerHTML='';
+  rows.slice(0,vLimit).forEach(e=>{
+    const tr=document.createElement('tr'),td1=document.createElement('td'),td2=document.createElement('td'),td3=document.createElement('td');
+    td1.innerHTML='<b>'+esc(e.w)+'</b>';
+    const sp=mkbtn('🔊',()=>speak(e.w,l.code),1);sp.style.padding='2px 8px';sp.style.marginLeft='6px';sp.setAttribute('aria-label','Play '+e.w);td1.appendChild(sp);
+    const inp=document.createElement('input');inp.value=e.m;inp.placeholder='Meaning';inp.style.width='100%';inp.setAttribute('aria-label','Meaning of '+e.w);
+    inp.onchange=()=>saveVocab(e,inp.value.trim());
+    inp.onkeydown=ev=>{if(ev.key==='Enter')inp.blur()};
+    td2.appendChild(inp);
+    if(e.src==='auto'||e.src==='card'){const tag=document.createElement('div');tag.className='count';tag.textContent=e.src==='auto'?'auto-filled, please check':'from your cards';td2.appendChild(tag)}
+    td3.style.whiteSpace='nowrap';
+    const nb=mkbtn('×'+e.n,()=>{vOpen.has(e.k)?vOpen.delete(e.k):vOpen.add(e.k);renderVocab()},1);nb.style.padding='2px 8px';nb.title='Show sentences with this word';td3.appendChild(nb);
+    tr.appendChild(td1);tr.appendChild(td2);tr.appendChild(td3);t.appendChild(tr);
+    if(vOpen.has(e.k)){const r2=document.createElement('tr'),c2=document.createElement('td');c2.colSpan=3;c2.className='count';c2.innerHTML=e.ex.map(c=>'• '+esc(c.w)+' — '+esc(c.m)).join('<br>');r2.appendChild(c2);t.appendChild(r2)}
+  });
+  $('vMore').hidden=rows.length<=vLimit;$('vMore').textContent='Show more ('+(rows.length-vLimit)+' left)';
+}
+function langCodeOf(name){const n=(name||'').trim().toLowerCase();if(!n||n==='english')return 'en';const x=LANGS.find(a=>a[0].toLowerCase().startsWith(n));return x?gLang(x[1]):'en'}
+async function autoFill(){
+  if(vBusy||!LG[cur])return;
+  const l=LG[cur],msg=t=>{$('vMsg').textContent=t};
+  const todo=buildVocab($('vScope').value||'all').list.filter(e=>!e.m).slice(0,40);
+  if(!todo.length){msg('Every word already has a meaning.');return}
+  const src=gLang(l.code),tgt=langCodeOf($('mean').value);
+  vBusy=true;let done=0,fail=0,stop='';
+  for(let i=0;i<todo.length;i++){
+    const e=todo[i];msg('Looking up meanings… '+(i+1)+' of '+todo.length);
+    try{
+      const r=await fetch('https://api.mymemory.translated.net/get?q='+encodeURIComponent(e.w)+'&langpair='+encodeURIComponent(src+'|'+tgt));
+      const j=await r.json(),txt=String((j.responseData||{}).translatedText||'').trim();
+      if(Number(j.responseStatus)===429||/MYMEMORY WARNING/i.test(txt)){stop='limit';break}
+      if(Number(j.responseStatus)!==200||!txt||normW(txt)===e.k||/INVALID/i.test(txt))fail++;
+      else{saveVocab(e,txt,true);done++}
+    }catch(err){stop='net';break}
+    await new Promise(r=>setTimeout(r,300));
+  }
+  vBusy=false;renderVocab();
+  msg(stop==='net'?'Could not reach the translation service. Check your internet connection (it does not work inside the Claude preview).':stop==='limit'?'The free translation limit for today was reached. Filled '+done+' meanings. Try again tomorrow, or type the rest.':'Filled '+done+' meanings'+(fail?', '+fail+' could not be found':'')+'. Please check them, since automatic lookups can be wrong. Click the button again for the next batch.');
+}
+function makeVocabSet(){
+  const l=LG[cur];if(!l)return;const msg=t=>{$('vMsg').textContent=t};
+  const list=buildVocab('all').list,files=filesOf(l),have=new Set();
+  files.filter(f=>f.id!=='vocab').forEach(f=>f.cards.forEach(c=>have.add(normW(c.w.trim()))));
+  const old=files.find(f=>f.id==='vocab'),dm=new Set();if(old)old.cards.forEach(c=>{if(c.d)dm.add(normW(c.w))});
+  const cards=list.filter(e=>e.m&&!have.has(e.k)).map(e=>{const o={w:e.w,m:e.m};if(dm.has(e.k))o.d=true;return o});
+  if(!cards.length){msg('No new words with meanings yet. Type or auto-fill some meanings first.');return}
+  write([cur,'files','vocab'],{name:'Vocabulary',created:old&&old.created?old.created:Date.now(),cards});
+  msg('The "Vocabulary" set now has '+cards.length+' cards. Find it in the files list above.');
+}
+$('vocabD').addEventListener('toggle',renderVocab);
+$('vScope').onchange=()=>{vLimit=100;renderVocab()};
+$('vSearch').oninput=()=>{vLimit=100;renderVocab()};
+$('vMissing').onchange=()=>{vLimit=100;renderVocab()};
+$('vMore').onclick=()=>{vLimit+=100;renderVocab()};
+$('vAuto').onclick=autoFill;
+$('vMake').onclick=makeVocabSet;
 function shuffleSeq(){for(let i=seq.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[seq[i],seq[j]]=[seq[j],seq[i]]}}
 function renderStudy(){
   const l=LG[cur],map=cardMap(),ids=Object.keys(map),have=new Set(seq);
